@@ -11,6 +11,8 @@
 * OpenSCENARIO support:
     - Added support for position with Lane information  (roadId and laneId)
     - Added support for TimeOfDay tag
+### :bug: Bug Fixes
+* Fixed spawning bugs for scenarios VehicleTurningRight, VehicleTurningLeft when they are part of a route
 
 ## CARLA ScenarioRunner 0.9.8
 ### :rocket: New Features
