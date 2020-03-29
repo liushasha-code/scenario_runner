@@ -285,7 +285,7 @@ class OSCStartEndCondition(AtomicCondition):
     Important parameters:
     - element_name: The story element's name attribute
     - element_type: The element type [act,scene,maneuver,event,action]
-    - rule: One or more of [START, END, CANCEL]
+    - rule: Either START or END
 
     The condition terminates with SUCCESS, when the named story element starts
     """
@@ -315,17 +315,11 @@ class OSCStartEndCondition(AtomicCondition):
         """
         new_status = py_trees.common.Status.RUNNING
 
-        if self._rule == "ANY":
-            rules = ["END", "CANCEL"]
-        else:
-            rules = [self._rule]
-
-        for rule in rules:
-            if new_status == py_trees.common.Status.RUNNING:
-                blackboard_variable_name = "({}){}-{}".format(self._element_type, self._element_name, rule)
-                element_start_time = self._blackboard.get(blackboard_variable_name)
-                if element_start_time and element_start_time >= self._start_time:
-                    new_status = py_trees.common.Status.SUCCESS
+        if new_status == py_trees.common.Status.RUNNING:
+            blackboard_variable_name = "({}){}-{}".format(self._element_type, self._element_name, self._rule)
+            element_start_time = self._blackboard.get(blackboard_variable_name)
+            if element_start_time and element_start_time >= self._start_time:
+                new_status = py_trees.common.Status.SUCCESS
 
         self.logger.debug("%s.update()[%s->%s]" % (self.__class__.__name__, self.status, new_status))
 
@@ -805,6 +799,41 @@ class WaitEndIntersection(AtomicCondition):
         if self.inside_junction and not waypoint.is_junction:
             if self.debug:
                 print("--- Leaving the junction")
+            new_status = py_trees.common.Status.SUCCESS
+
+        return new_status
+
+
+class WaitForBlackboardVariable(AtomicCondition):
+
+    """
+    Atomic behavior that keeps running until the blackboard variable is set to the corresponding value.
+    Used to avoid returning FAILURE if the blackboard comparison fails.
+
+    It also initially sets the variable to a given value, if given
+    """
+
+    def __init__(self, variable_name, variable_value, var_init_value=None,
+                 debug=False, name="WaitForBlackboardVariable"):
+        super(WaitForBlackboardVariable, self).__init__(name)
+        self._debug = debug
+        self._variable_name = variable_name
+        self._variable_value = variable_value
+        self.logger.debug("%s.__init__()" % (self.__class__.__name__))
+
+        if var_init_value is not None:
+            blackboard = py_trees.blackboard.Blackboard()
+            _ = blackboard.set(variable_name, var_init_value)
+
+    def update(self):
+
+        new_status = py_trees.common.Status.RUNNING
+
+        blackv = py_trees.blackboard.Blackboard()
+        value = blackv.get(self._variable_name)
+        if value == self._variable_value:
+            if self._debug:
+                print("Blackboard variable {} set to True".format(self._variable_name))
             new_status = py_trees.common.Status.SUCCESS
 
         return new_status
