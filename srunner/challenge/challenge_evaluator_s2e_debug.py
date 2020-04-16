@@ -45,6 +45,9 @@ from agents.navigation.local_planner import RoadOption
 from agents.navigation.global_route_planner import GlobalRoutePlanner
 from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
 
+# get waypoint after a intersection
+from srunner.tools.scenario_helper import generate_target_waypoint
+
 import srunner.challenge.utils.route_configuration_parser as parser
 from srunner.challenge.autoagents.autonomous_agent import Track
 from srunner.scenariomanager.timer import GameTime
@@ -99,6 +102,7 @@ number_class_translation = {
 
 }
 
+# paras for scenario training
 PENALTY_COLLISION_STATIC = 5
 PENALTY_COLLISION_VEHICLE = 5
 PENALTY_COLLISION_PEDESTRIAN = 5
@@ -108,8 +112,22 @@ PENALTY_SIDEWALK_INVASION = 5
 PENALTY_ROUTE_DEVIATION = 5
 PENALTY_STOP = 2
 
-EPISODES = 80
+# paras for drl training
+EPISODES = 1
 
+# default junction right turn scenario paras
+scenario_para_dict = {
+    'map': "Town03",
+    'start_point': np.array([53.0, 128.0, 1.0]),
+    # 'end_point': np.array([5.24, 92.28, 0]),
+}
+
+# carla color for different object
+Red = carla.Color(r=255, g=0, b=0)
+Green = carla.Color(r=0, g=255, b=0)
+Blue = carla.Color(r=255, g=0, b=0)
+Yellow = carla.Color(r=255, g=255, b=0)
+Magenta = carla.Color(r=255, g=0, b=255)
 
 def convert_json_to_actor(actor_dict):
     node = ET.Element('waypoint')
@@ -133,6 +151,47 @@ def convert_json_to_transform(actor_dict):
     return carla.Transform(location=carla.Location(x=float(actor_dict['x']), y=float(actor_dict['y']),
                                                    z=float(actor_dict['z'])),
                            rotation=carla.Rotation(roll=0.0, pitch=0.0, yaw=float(actor_dict['yaw'])))
+
+def generate_route(vehicle, turn_flag=0, hop_resolution=1.0):
+    """
+        Generate a local route for vehicle to next intersection
+        todo: check if turn flag is unsuitable in next turn
+    :param vehicle: Vehicle need route
+    :param turn_flag: turn flag to
+    :param hop_resolution: Distance between each waypoint
+    :return: gps and coordinate route  generated
+    """
+
+    world = vehicle.get_world()
+    map = world.get_map()
+
+    # get initial location of ego_vehicle
+    start_waypoint = map.get_waypoint(vehicle.get_location())
+
+    # Using generate_target_waypoint to generate target waypoint
+    # ref on scenario_helper.py module
+    turn_flag = 0  # turn_flag by current scenario
+    end_waypoint = generate_target_waypoint(start_waypoint, turn_flag)
+
+    # generate a dense route according to current scenario
+    # Setting up global router
+    waypoints = [start_waypoint.transform.location, end_waypoint.transform.location]
+    # from srunner.challenge.utils.route_manipulation import interpolate_trajectory
+    gps_route, trajectory = interpolate_trajectory(world, waypoints, hop_resolution)
+
+def get_rotation_matrix_2D(transform):
+    """
+        Get a 2D transform matrix of a specified transform
+        from actor reference frame to map coordinate frame
+    :param transform: actor transform, actually only use yaw angle
+    :return: rotation matrix
+    """
+    yaw = np.deg2rad(transform.rotation.yaw)
+    cy = np.cos(yaw)
+    sy = np.sin(yaw)
+    rotation_matrix_2D = np.array([[cy, -sy],
+                                   [sy, cy]])
+    return rotation_matrix_2D
 
 
 class Modified_ChallengeEvaluator(object):
@@ -192,8 +251,7 @@ class Modified_ChallengeEvaluator(object):
 
         self.config = args.config
 
-        self.starting_point = args.starting
-        self.ending_point = args.ending
+
 
         self.rendering = args.rendering
 
@@ -209,9 +267,19 @@ class Modified_ChallengeEvaluator(object):
 
         self.load_world(self.client, self.map)
 
+        #  get route
+        self.starting_point = args.starting
+        self.ending_point = args.ending
+
         # route calculate
         # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
+        # todo: package into class
         self.gps_route, self.route = self.calculate_route()
+
+
+
+
+
         self.route_length = 0.0
         self.route_timeout = self.estimate_route_timeout()
 
@@ -221,6 +289,62 @@ class Modified_ChallengeEvaluator(object):
 
     def reach_ending_point(self):
         return False
+
+    # use static method for now
+    @staticmethod
+    def set_spectator(world, waypoint, view_tag=0):
+        """
+            todo: redesign the args, with num and semantic word
+            Set spectator of different view.
+            param waypoint: carla.waypoint class is required
+
+        :param world:
+        :param waypoint:
+        :param view_mode:
+        :return: None
+        """
+        # get paras
+        transform = waypoint.transform
+        location = transform.location
+        rotation = transform.rotation
+
+        if view_tag == 0:
+            view_mode = "behind"
+
+            # behind distance - d, height - h
+            d = 8
+            h = 8
+            angle = transform.rotation.yaw
+            a = math.radians(180 + angle)
+            location = carla.Location(x=d * math.cos(a), y=d * math.sin(a), z=h) + transform.location
+            rotation = carla.Rotation(yaw=angle, pitch=-15)
+        elif view_tag == 1:
+            view_mode = "overhead"
+            h = 100
+            location = carla.Location(0, 0, h)+transform.location
+            rotation = carla.Rotation(yaw=rotation.yaw, pitch=-90)  # rotate to forward direction
+        elif view_tag == 2:
+            # todo: this mode is not fixed
+            view_mode = "side"
+            scalar = 5
+            offset_vector = np.array([-1, -2, 1])  # relative location of spectator
+            offset_vector = scalar*offset_vector/np.linalg.norm(offset_vector)
+            trans_matrix = get_rotation_matrix_2D(transform)
+            # define view by a vector
+            offset_vector_global = np.multiply(np.transpose(trans_matrix), offset_vector)  # spectator offset vector in global coord system
+            # relative location to selected waypoint in global coord frame
+            spectator_location = carla.Location(x=offset_vector_global[0], y=offset_vector_global[1], z=offset_vector_global[2])  # transform to carla.Location class
+            location = spectator_location + transform.location
+            # calculate rotation
+            [x, y, z] = -1*[offset_vector_global[0], offset_vector_global[1], offset_vector_global[2]]
+            yaw = np.arctan2(y, x)
+            pitch = np.arctan2(z, math.sqrt(y*y + x*x))
+            rotation = carla.Rotation(yaw=yaw, pitch=pitch)
+
+        spectator = world.get_spectator()
+        spectator.set_transform(carla.Transform(location, rotation))
+        world.tick()
+        print("Spectator is set to ", view_mode, "view")
 
     def cleanup(self, ego=False):
         """
@@ -282,25 +406,49 @@ class Modified_ChallengeEvaluator(object):
             self.world.tick()
             self.world.wait_for_tick(self.wait_for_world)
 
+    # original calculate route
+    # def calculate_route(self):
+    #     """
+    #     This function calculate a route for giving starting_point and ending_point
+    #     :return: route (includeing Waypoint.transform & RoadOption)
+    #     """
+    #     starting_location = carla.Location(x=float(self.starting_point.split("_")[0]),
+    #                                        y=float(self.starting_point.split("_")[1]),
+    #                                        z=float(self.starting_point.split("_")[2]))
+    #
+    #     ending_location = carla.Location(x=float(self.ending_point.split("_")[0]),
+    #                                      y=float(self.ending_point.split("_")[1]),
+    #                                      z=float(self.ending_point.split("_")[2]))
+    #
+    #     # returns list of (carla.Waypoint.transform, RoadOption) from origin to destination
+    #     coarse_route = []
+    #     coarse_route.append(starting_location)
+    #     coarse_route.append(ending_location)
+    #
+    #     return interpolate_trajectory(self.world, coarse_route)
+
+    # modified
     def calculate_route(self):
         """
-        This function calculate a route for giving starting_point and ending_point
-        :return: route (includeing Waypoint.transform & RoadOption)
+                This function calculate a route for giving starting_point and ending_point
+                :return: route (includeing Waypoint.transform & RoadOption)
         """
-        starting_location = carla.Location(x=float(self.starting_point.split("_")[0]),
-                                           y=float(self.starting_point.split("_")[1]),
-                                           z=float(self.starting_point.split("_")[2]))
 
-        ending_location = carla.Location(x=float(self.ending_point.split("_")[0]),
-                                         y=float(self.ending_point.split("_")[1]),
-                                         z=float(self.ending_point.split("_")[2]))
+        starting_location = carla.Location(x=self.starting_point[0],
+                                           y=self.starting_point[1],
+                                           z=self.starting_point[2])
 
-        # returns list of (carla.Waypoint.transform, RoadOption) from origin to destination
+        ending_location = carla.Location(x=self.ending_point[0],
+                                         y=self.ending_point[1],
+                                         z=self.ending_point[2])
+
+        # input args is a coarse route of carla.Location
         coarse_route = []
         coarse_route.append(starting_location)
         coarse_route.append(ending_location)
-
-        return interpolate_trajectory(self.world, coarse_route)
+        # returns list of (carla.Waypoint.transform, RoadOption) from origin to destination
+        gps_route, trajectory = interpolate_trajectory(self.world, coarse_route)
+        return gps_route, trajectory
 
     def draw_waypoints(self, waypoints, turn_positions_and_labels, vertical_shift, persistency=-1):
         """
@@ -436,6 +584,7 @@ class Modified_ChallengeEvaluator(object):
         return score_composed, score_route, score_penalty
 
     def calculate_angle(self):
+        # calculate angle between local waypoint direction
         map = CarlaDataProvider.get_map()
         lane_waypoint = map.get_waypoint(self.ego_vehicle.get_location())
         next_waypoint = lane_waypoint.next(2.0)[0]
@@ -724,8 +873,9 @@ class Modified_ChallengeEvaluator(object):
 
             # easy version test
             self.agent_algorithm = DQNAlgorithm(4, self.agent_instance.get_action_shape())
-            # self.agent_algorithm.load_net()
+            self.agent_algorithm.load_net()
 
+        # set algorithm module to agent instance
         self.agent_instance.set_algorithm(self.agent_algorithm)
         self.agent_instance.algorithm.change_rate(episode_index)
 
@@ -757,6 +907,10 @@ class Modified_ChallengeEvaluator(object):
             GameTime.on_carla_tick(self.timestamp)
             CarlaDataProvider.on_carla_tick()
 
+            # show
+            print("world timestamp: ", self.timestamp)
+            # print("")
+
             # update all scenarios
             # read state and take action
             # 调用callback callback读取传感器状态并采取动作，保存状态功能写在agent中
@@ -787,6 +941,11 @@ class Modified_ChallengeEvaluator(object):
             for scenario in self.list_scenarios:
                 scenario.scenario.scenario_tree.tick_once()
 
+            # print status
+            print("==================================================")
+            print("scenario status: ", self.master_scenario.scenario.scenario_tree.status)
+            print("==================================================")
+
             if self.debug > 1:
                 for actor in self.world.get_actors():
                     if 'vehicle' in actor.type_id or 'walker' in actor.type_id:
@@ -794,6 +953,8 @@ class Modified_ChallengeEvaluator(object):
 
             # ego vehicle acts
             self.ego_vehicle.apply_control(ego_action)
+
+            # set spectator
             if self.spectator:
                 spectator = self.world.get_spectator()
                 ego_trans = self.ego_vehicle.get_transform()
@@ -908,7 +1069,16 @@ class Modified_ChallengeEvaluator(object):
             # self.background_scenario = self.build_background_scenario(self.map, timeout=self.route_timeout)
             # self.traffself.load_environment_and_run(argsenarios_definitions = world_annotations[self.map][0]
             self.list_scenarios = [self.master_scenario]
+
+            # original
             # self.list_scenarios += self.build_scenario_instances(sampled_scenarios_definitions, self.map,timeout=self.route_timeout)
+
+            # ==================================================
+            # todo: add a module to add specified scenarios
+            # ref on self.build_scenario_instances method
+            self.list_scenarios += self.build_scenario_instances(sampled_scenarios_definitions, self.map,timeout=self.route_timeout)
+
+            # ==================================================
 
             # main loop!
             if self.run_route(self.route):
@@ -916,6 +1086,9 @@ class Modified_ChallengeEvaluator(object):
             # self.world.tick()
 
         self.agent_algorithm.save_net()
+        print("==================================================")
+        print("Net is saved")
+        print("==================================================")
 
     def run(self, args):
         """
@@ -961,6 +1134,9 @@ class Modified_ChallengeEvaluator(object):
         self.master_scenario = None
         self.background_scenario = None
 
+np.array([53.0, 128.0, 1.0]),
+    # 'end_point': np.array([5.24, 92.28, 0]),
+
 
 if __name__ == '__main__':
     DESCRIPTION = ("CARLA AD Challenge evaluation: evaluate your Agent in CARLA scenarios\n")
@@ -975,9 +1151,9 @@ if __name__ == '__main__':
                         default="Town03")
     PARSER.add_argument("-s", "--starting", type=str,
                         help="Agent's Starting point(Transform format:(x,y,z,pitch,yaw,row))",
-                        default="-39.87355041503906_207.63058471679688_0.0_0_0_0")
+                        default=[53.0, 128.0, 1.0])  # this is a default start point of a right turn scenario
     PARSER.add_argument("-e", "--ending", type=str, help="Agent's Ending point(Transform format:(x,y,z,pitch,yaw,row))",
-                        default="47.5295295715332_207.41250610351562_0.0_0_0_0")
+                        default=[5.24, 92.28, 0])  # this is a default start point of a right turn scenario, 30m after the junction
     # PARSER.add_argument('--scenarios',
     #                     help='Name of the scenario annotation file to be mixed with the route.')
     PARSER.add_argument('--track', type=int, help='track type', default=4)
@@ -987,8 +1163,12 @@ if __name__ == '__main__':
 
     ARGUMENTS = PARSER.parse_args()
 
-    CARLA_ROOT = os.environ.get('CARLA_ROOT')
-    ROOT_SCENARIO_RUNNER = os.environ.get('ROOT_SCENARIO_RUNNER')
+    # CARLA_ROOT = os.environ.get('CARLA_ROOT')
+    # ROOT_SCENARIO_RUNNER = os.environ.get('ROOT_SCENARIO_RUNNER')
+
+    # set carla root manually
+    CARLA_ROOT = "/home/lyq/CARLA_simulator/CARLA_095"
+    ROOT_SCENARIO_RUNNER = "/home/lyq/PycharmProjects/scenario_runner"
 
     if not CARLA_ROOT:
         print("Error. CARLA_ROOT not found. Please run setup_environment.sh first.")
@@ -1017,6 +1197,10 @@ if __name__ == '__main__':
     challenge_evaluator = None
 
     try:
+
+
+
+
         challenge_evaluator = Modified_ChallengeEvaluator(ARGUMENTS)
         challenge_evaluator.run(ARGUMENTS)
     except Exception as e:

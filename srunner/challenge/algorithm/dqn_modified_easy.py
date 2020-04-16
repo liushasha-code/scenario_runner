@@ -14,6 +14,27 @@ Similar to Track 4 settings.
 
 """
 
+# add carla path to import carla
+import glob
+import os
+import sys
+
+# using carla 095
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla")
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
+# add carla egg
+carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'
+
+try:
+    sys.path.append(glob.glob(carla_path + '/carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+except IndexError:
+    pass
+
+import carla
+
 import math
 import torch
 import torch.nn as nn
@@ -53,6 +74,8 @@ class Net(nn.Module):
         state_3 = state_3.to(device)
         state_4 = state_4.to(device)
 
+        torch_cat_result = torch.cat((state_1, state_2, state_3, state_4), 1)
+
         input_tensor = torch.cat((state_1, state_2, state_3, state_4), 1).to(device)
         return self.fc(input_tensor)
 
@@ -89,8 +112,14 @@ class DQNAlgorithm(object):
         self.memory_counter = 0
         self.memory = [None] * self.capacity
         # already fixed path, use relative path
-        self.writer = SummaryWriter('./DQN/logs/100eps')
-        self.path = './DQN_training/scenario_runner-0.9.5/basic_test/'
+        self.writer = SummaryWriter('./DQN_save/logs/training_test')
+
+        # debug path test
+        # self.path = "/home/lyq/PycharmProjects/scenario_runner/srunner/challenge/DQN/DQN_training_test/"
+
+        # original
+        self.path = './DQN_save/'
+
         self.total_reward = 0.0
         self.episode_reward = 0.0
         self.episode_index = 0
@@ -98,12 +127,14 @@ class DQNAlgorithm(object):
     def select_action(self, state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor):
         # todo: check if state is available tensor
         if np.random.randn() <= self.episilo:  # greedy policy
-            #
+        # if np.random.randn() <= 2:  # for debug
+            print("greedy policy")
             action_value = self.eval_net.forward(state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor)
             action_value = action_value.to("cpu")
             action = torch.max(action_value, 1)[1].data.numpy()
             action = action[0]
         else:  # random policy
+            print("random policy")
             action = np.random.randint(0, self.action_dim)
         return action
 
@@ -198,13 +229,33 @@ class DQNAlgorithm(object):
 
     def save_net(self):
         print('enter save')
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
+
+        # debug
+        state_dict = self.eval_net.state_dict()
+        actual_path = self.path + 'dqn.pth'
+
+        # debug
+        # torch.save(self.eval_net.state_dict(), 'dqn.pth')
+
+        # path = "./DQN/DQN_training_test/"
+
+        # try:
+        #     print("test path is: ", path+'dqn.pth')
+        #     torch.save(self.eval_net.state_dict(), path+'dqn.pth')
+        # except Exception as e:
+        #     print(type(e))
+        #     print("file save error")
+
+        # original
         torch.save(self.eval_net.state_dict(), self.path + 'dqn.pth')
 
+        print('Net save is called.')
+
     def load_net(self):
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         self.eval_net.load_state_dict(torch.load(self.path + 'dqn.pth'))
         self.target_net.load_state_dict(torch.load(self.path + 'dqn.pth'))
 

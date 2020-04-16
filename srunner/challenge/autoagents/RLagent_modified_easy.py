@@ -5,13 +5,30 @@ fixed based on RLagent
 Change state API, using different state representation.
 
 """
+
+# add carla path to import carla
+import glob
+import os
+import sys
+
+# using carla 095
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla")
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
+# add carla egg
+carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'
+
+try:
+    sys.path.append(glob.glob(carla_path + '/carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+except IndexError:
+    pass
+import carla
+
 import numpy as np
 import math
 import torch
-import carla
-import copy
-import datetime
-from enum import Enum
 from itertools import product
 from collections import namedtuple
 from srunner.challenge.envs.sensor_interface import SensorInterface
@@ -24,14 +41,13 @@ import heapq
 from collections import deque
 
 # import from util
-from srunner.challenge.autoagents.util import get_rotation_matrix_2D, plot_local_coordinate_frame
+from srunner.util_development.util import get_rotation_matrix_2D
 
 # import carla.ColorConverter
 
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
 # 由于每次Reset会删除当前Agent并重新产生，所以网络参数应与Agent脱离
 # 此RL训练用Agent只负责与网络进行状态变量的预处理和传输以及动作的执行
@@ -105,7 +121,6 @@ class RLAgent(AutonomousAgent):
             # {'type':'sensor.camera.semantic_segmentation','x': 0.7, 'y': 0.0, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
             #  'width': 300, 'height': 200, 'fov': 100, 'id': 'Sem'}
         ]
-
         return sensors
 
     # 根据steer_num和acc_num划分离散动作空间
@@ -120,9 +135,21 @@ class RLAgent(AutonomousAgent):
         Get 2 nearest waypoint
         :return:
         """
-        #   Buffering the waypoints
-        if not self._waypoint_buffer:
-            for i in range(self._buffer_size):
+        # Buffering the waypoints
+
+        # # original version
+        # if not self._waypoint_buffer:
+        #     for i in range(self._buffer_size):
+        #         if self._waypoints_queue:
+        #             self._waypoint_buffer.append(
+        #                 self._waypoints_queue.popleft())
+        #         else:
+        #             break
+
+        # check and buffer waypoints
+        least_buffer_num = 3
+        if len(self._waypoint_buffer) <= least_buffer_num:
+            for i in range(self._buffer_size - len(self._waypoint_buffer)):
                 if self._waypoints_queue:
                     self._waypoint_buffer.append(
                         self._waypoints_queue.popleft())
@@ -138,8 +165,9 @@ class RLAgent(AutonomousAgent):
             # if waypoint here is waypoint class
             # if waypoint.transform.location.distance(self.ego_vehicle.get_location()) < self._min_distance:
                 max_index = i
+        # supplyment more waypoints
         if max_index >= 0:
-            for i in range(max_index + 1):  # amount of waypoints to pop out
+            for i in range(max_index + 1):  # max_index + 1 is the amount number of waypoints to pop out into buffer
                 self.near_waypoint_queue.append(self._waypoint_buffer.popleft())
 
         # find 2 nearest waypoint in near_waypoint_queue
@@ -172,7 +200,7 @@ class RLAgent(AutonomousAgent):
         next_waypoint_location.z = 2
         debug = self.world.debug
         debug.draw_arrow(last_waypoint_location, next_waypoint_location, thickness=0.1, arrow_size=0.1,
-                         color=carla.Color(255, 0, 0),
+                         color=carla.Color(0, 255, 0),
                          life_time=10)
 
         # draw point, tested
@@ -180,9 +208,6 @@ class RLAgent(AutonomousAgent):
         # debug.draw_point(last_waypoint, size=0.15, color=carla.Color(0, 255, 0), life_time=1000)
         print('local direction updated.')
         return last_waypoint_location, next_waypoint_location
-
-
-
 
     def run_step(self, state=None):
         """
@@ -206,15 +231,32 @@ class RLAgent(AutonomousAgent):
         ego_transform = self.ego_vehicle.get_transform()
         lat_offset, diversion_angle = self.get_local_geometry_state(ego_transform,
                                         last_waypoint_location, next_waypoint_location)
+        print("lat_offset: ", lat_offset)
+        print("diversion_angle", diversion_angle)
+
+        # debug
+        if lat_offset > 0.95:
+            print("debug")
+
+        if diversion_angle > 0.44:
+            print("debug")
 
         # get state about navigation(target waypoint)
         # todo: this should be master_scenario_state in future version
         # vector to target waypoint in local frame
         lon_diatance, lat_diatance = self.get_navigation_state()
 
+        print("lon_diatance: ", lon_diatance)
+        print("lat_diatance: ", lat_diatance)
+
         # todo: add state, velocity projection on local direction
         # lon_vel_nav, lat_vel_nav = self.get_velo_nav()
 
+        # print to debug
+        print("lat_offset: ", lat_offset)
+        print("diversion_angle: ", diversion_angle)
+        print("lon_diatance: ", lon_diatance)
+        print("lat_diatance: ", lat_diatance)
 
         # stack all state into state_dict
         # state_list = [lon_diatance, lat_diatance, lat_offset, diversion_angle]
@@ -239,6 +281,11 @@ class RLAgent(AutonomousAgent):
         #     state_tensor.append(tensor)
 
         # ==================================================
+        # try to catch a bug
+        # if diversion_angle >= 50:
+        #     print("need to check")
+        # ==================================================
+
 
 
         if self.state is None:
@@ -268,6 +315,13 @@ class RLAgent(AutonomousAgent):
 
         # get action from RL module
         action_index = self.algorithm.select_action(state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor)  # get sparse action index
+
+        print("action_index: ", action_index)
+
+        # action space bug
+        if action_index == 15:
+            print("action space error")
+
         # get corresponding actual action
         self.action = action_index
         control.steer = self.action_space[action_index][0]
@@ -403,7 +457,7 @@ class RLAgent(AutonomousAgent):
         Stage 1: follow waypoints plan
         :return: State vector
         """
-
+        
         # set first waypoint as Origin
         # todo: fix origin selection
         Origin_transform = self._global_plan_world_coord[0][0]
@@ -423,19 +477,23 @@ class RLAgent(AutonomousAgent):
         velocity_2D = np.array([velocity.x, velocity.y])
         velocity_2D_local = np.matmul(trans_matrix, velocity_2D)
 
+        # debug
+        # waypoint buffer empty
+        if not self._waypoint_buffer:
+            print("waypoint buffer empty!")
+
         # offset respect to target waypoint
         # todo: local frame will be changed after intersection
         target_waypoint_location = self._waypoint_buffer[0][0].location
-        temp_location = target_waypoint_location - self.ego_location # this is a location class
-        vector_ego_target_2D = np.array([temp_location.x, temp_location.y]) # with out transformation
+        temp_location = target_waypoint_location - self.ego_location  # this is a location class
+        vector_ego_target_2D = np.array([temp_location.x, temp_location.y])  # with out transformation
         # transform into local frame
         lon_dist, lat_dist = np.matmul(trans_matrix, vector_ego_target_2D)
         # print("navigation state update")
 
-        # visualization
-        # local frame
+        # visualization to target waypoint
         # plot_local_coordinate_frame(self.world, Origin_transform) # this method is stored in util
-        # vehicle to target waypoint
+        # draw arrow from ego vehicle to target waypoint
         # todo: add debug as class attribute
         debug = self.world.debug
         # draw arrow at a higher location
@@ -447,12 +505,12 @@ class RLAgent(AutonomousAgent):
                          thickness=0.1,
                          arrow_size=0.1,
                          color=carla.Color(255, 0, 0),
-                         life_time=1000)
+                         life_time=3)
 
         return lon_dist, lat_dist
 
-    @staticmethod
-    def get_local_geometry_state(ego_transform, last_waypoint_location, next_waypoint_location):
+    # @staticmethod
+    def get_local_geometry_state(self, ego_transform, last_waypoint_location, next_waypoint_location):
         """
         Get contents of penalty reward.
         lateral offset, diversion angle
@@ -462,13 +520,13 @@ class RLAgent(AutonomousAgent):
         :return:
         """
 
-        # get location
+        length_factor = 1
+
         ego_location = ego_transform.location
 
-        # coords in frame
-        E = np.array([ego_location.x, ego_location.y])
         A = np.array([last_waypoint_location.x, last_waypoint_location.y])
         B = np.array([next_waypoint_location.x, next_waypoint_location.y])
+        E = np.array([ego_location.x, ego_location.y])
 
         Vector_AE = E - A
         Vector_AB = B - A
@@ -480,15 +538,60 @@ class RLAgent(AutonomousAgent):
         lat_offset = np.linalg.norm(Vector_AE - temp)
 
         # calculate diversion angle
-        # in degree
+        # in radians
         yaw = ego_transform.rotation.yaw
-        ego_direction = [math.cos(yaw), math.sin(yaw)]
+        ego_direction = [math.cos(math.radians(yaw)),
+                         math.sin(math.radians(yaw))]
+        # in radians
+        diversion_angle = math.atan2(ego_direction[1], ego_direction[0]) - math.atan2(Vector_AB[1], Vector_AB[0])
 
-        cos_angle = Vector_AB.dot(ego_direction) / np.linalg.norm(ego_direction) / np.linalg.norm(Vector_AB)
-        # todo: check bug and examine diversion direction
-        if cos_angle < 0:
-            print("Diversion angle is invalid. Ego vehicle is heading direction.")
-        diversion_angle = np.arccos(cos_angle)
-        diversion_angle = np.degrees(diversion_angle)
+        # normalization selection
+        _if_normalization = False
+
+        if _if_normalization:
+            diversion_angle = diversion_angle/0.5/math.pi
+
+        # check if invalid
+        if diversion_angle < -0.5*math.pi:
+            print("Diversion angle < -90 degrees! Will be normalized")
+            print("diversion_angle = ", math.degrees(diversion_angle))
+            diversion_angle = -0.5*math.pi
+        elif diversion_angle > 0.5*math.pi:
+            print("Diversion angle > 90 degrees! Will be normalized")
+            print("diversion_angle = ", math.degrees(diversion_angle))
+            diversion_angle = 0.5 * math.pi
+
+        # ==================================================
+        # visualization
+        debug = self.world.debug
+
+        # ego direction in 2d
+        start = np.array([ego_location.x, ego_location.y])
+        end = start + ego_direction * length_factor
+
+        # height of arrow plane
+        h = 5
+        arrow_start = carla.Location(x=start[0], y=start[1], z=h)
+        arrow_end = carla.Location(x=end[0], y=end[1], z=h)
+
+        # arrow_list.append([arrow_start, arrow_end])
+        debug.draw_arrow(arrow_start, arrow_end,
+                         thickness=0.1,
+                         arrow_size=0.1,
+                         color=carla.Color(255, 0, 0),
+                         life_time=3)
+
+        # draw direction vector of local route
+        Vector_AB = Vector_AB/np.linalg.norm(Vector_AB)
+
+        local_direction_end = A + Vector_AB*length_factor
+        arrow_start = carla.Location(x=A[0], y=A[1], z=h)
+        arrow_end = carla.Location(x=local_direction_end[0], y=local_direction_end[1], z=h)
+        # arrow_list.append([arrow_start, arrow_end])
+        debug.draw_arrow(arrow_start, arrow_end,
+                         thickness=0.1,
+                         arrow_size=0.1,
+                         color=carla.Color(0, 255, 0),
+                         life_time=3)
 
         return lat_offset, diversion_angle
