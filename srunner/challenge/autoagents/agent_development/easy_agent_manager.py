@@ -14,7 +14,7 @@ class agent_manager(object):
 
     def get_state(self):
 
-        self.
+        pass
 
     def apply_control(self):
         self.vehicle.applycontrol()

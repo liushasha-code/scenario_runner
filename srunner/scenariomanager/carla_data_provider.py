@@ -466,7 +466,7 @@ class CarlaActorPool(object):
                 pass
         # wait for the actor to be spawned properly before we do anything
         CarlaActorPool._world.tick()
-        CarlaActorPool._world.wait_for_tick()
+        # CarlaActorPool._world.wait_for_tick()
         return actor
 
     @staticmethod

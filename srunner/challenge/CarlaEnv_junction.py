@@ -1,9 +1,11 @@
-#!/usr/bin/env python
-# authors: Guo Youtian
-#
-# This work is modified challenge evaluator_routes
-# s2e means the route is specified by starting point and ending point
-# The 1.0 Version do not contain scenario module
+"""
+Creation log 2020.04.22
+This is a DRL training environment with following features:
+1. Modified from s2e
+2. suits carla 098 features
+3. add some new features to train agent in junction scenario.
+
+"""
 
 from __future__ import print_function
 
@@ -16,7 +18,7 @@ import sys
 # sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
 # carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'  # carla egg
 
-# if using carla098
+# if using carla 098
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla")
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla/agents")
 carla_path = '/home/lyq/CARLA_simulator/CARLA_098/PythonAPI'
@@ -59,7 +61,9 @@ from srunner.challenge.envs.scene_layout_sensors import SceneLayoutReader, Objec
 from srunner.challenge.envs.sensor_interface import CallBack, CANBusSensor, HDMapReader
 from srunner.scenariomanager.carla_data_provider import CarlaActorPool, CarlaDataProvider
 from srunner.tools.config_parser import ActorConfiguration, ScenarioConfiguration, ActorConfigurationData
-from srunner.scenarios.master_scenario import MasterScenario
+# from srunner.scenarios.master_scenario import MasterScenario
+from srunner.scenarios.scenario_development.master_scenario_modified import MasterScenario  # use modified master_scenario
+
 from srunner.scenarios.background_activity import BackgroundActivity
 from srunner.scenarios.trafficlight_scenario import TrafficLightScenario
 from srunner.scenarios.control_loss import ControlLoss
@@ -86,9 +90,14 @@ from srunner.scenariomanager.traffic_events import TrafficEventType
 # test agent
 # from srunner.challenge.autoagents.RLagent_test import RLAgent
 
+# self defined util
+from srunner.util_development.util import *
+from srunner.util_development.util import coords_trans
 # easy test
-from srunner.challenge.autoagents.RLagent_modified_easy import RLAgent
-from srunner.challenge.algorithm.dqn_modified_easy import DQNAlgorithm
+# from srunner.challenge.autoagents.RLagent_junction import RLAgent
+from srunner.challenge.autoagents.RLagent_lon import RLAgent
+# from srunner.challenge.algorithm.dqn import DQNAlgorithm
+from srunner.challenge.algorithm.dqn_lon import DQNAlgorithm
 
 number_class_translation = {
 
@@ -215,7 +224,7 @@ def get_rotation_matrix_2D(transform):
                                    [sy, cy]])
     return rotation_matrix_2D
 
-def set_spectator(world, transform, view_mode=0):
+def set_spectator_location(world, transform, view_mode=0):
     """
         Set spectator at different viewpoint.
 
@@ -242,39 +251,13 @@ def set_spectator(world, transform, view_mode=0):
         h = 50
         location = carla.Location(0, 0, h)+transform.location
         rotation = carla.Rotation(yaw=rotation.yaw, pitch=-90)  # rotate to forward direction
-    elif view_mode == 2:
-        print("Spectator is set to side behind view.")
-        # todo: finish this view
-
-    elif view_mode == 3:
-
-        print("Spectator is set to side behind view.")
-        scalar = 5
-        offset_vector = np.array([-1, -2, 1])  # relative location of spectator
-        offset_vector = scalar*offset_vector/np.linalg.norm(offset_vector)
-        trans_matrix = get_rotation_matrix_2D(transform)
-
-        # using only raw and pitch rotation
-        trans_matrix = np.array([[]])
-
-        offset_vector_global = np.multiply(np.transpose(trans_matrix), offset_vector)  # spectator offset vector in global coord system
-        # relative location to selected waypoint in global coord frame
-        spectator_location = carla.Location(x=offset_vector_global[0], y=offset_vector_global[1], z=offset_vector_global[2])  # transform to carla.Location class
-        location = spectator_location + transform.location
-
-        # calculate rotation
-        [x, y, z] = -1*[offset_vector_global[0], offset_vector_global[1], offset_vector_global[2]]
-        yaw = np.arctan2(y, x)
-        pitch = np.arctan2(z, math.sqrt(y*y + x*x))
-        rotation = carla.Rotation(yaw=yaw, pitch=pitch)
 
     spectator = world.get_spectator()
     spectator.set_transform(carla.Transform(location, rotation))
     world.tick()
-    print("d")
+    # print("spectator is reset")
 
-
-class Modified_ChallengeEvaluator(object):
+class ScenarioEnv(object):
     """
     Provisional code to evaluate AutonomousAgent performance
     """
@@ -347,6 +330,14 @@ class Modified_ChallengeEvaluator(object):
 
         self.load_world(self.client, self.map)
 
+        self.wmap = self.world.get_map()
+        # get some necessary API
+        # self.debug = self.world.debug
+
+        # set traffic manager
+        self.traffic_manager = self.client.get_trafficmanager()
+
+
         #  get route
         self.starting_point = args.starting
         self.ending_point = args.ending
@@ -363,6 +354,7 @@ class Modified_ChallengeEvaluator(object):
         # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
         # todo: package into class
         self.gps_route, self.route = self.calculate_route()
+        self.get_junction_frame()
 
         self.route_length = 0.0
         self.route_timeout = self.estimate_route_timeout()
@@ -373,6 +365,64 @@ class Modified_ChallengeEvaluator(object):
 
     def reach_ending_point(self):
         return False
+
+    def get_junction_frame(self, turn_flag=1):
+        """
+        Get local coordinate frame using generate waypoint.
+        todo: add attributes to init
+        :return: local
+        """
+        start_waypoint = self.wmap.get_waypoint(self.starting_location)
+        self.junction_origin = generate_target_waypoint(start_waypoint, turn_flag)  # carla.waypoint
+        yaw = np.deg2rad(self.junction_origin.transform.rotation.yaw)
+        [c_yaw, s_yaw] = [np.cos(yaw), np.sin(yaw)]
+        self.transform_matrix = np.array([[c_yaw, s_yaw, 0],
+                                         [-s_yaw, c_yaw, 0],
+                                          [0, 0, 1]])
+
+    def set_static_view(self):
+        """
+        Set spectator at static view over junction
+        :return:
+        """
+        spectator_transform = carla.Transform(carla.Location(x=5.0, y=140.0, z=0.000000),
+                                         carla.Rotation(pitch=360.000000, yaw=269.637451, roll=0.000000))
+
+        # plot local coordinate frame
+        pass
+
+
+    def get_geometry_state(self):
+        """
+        Get some geometry state in local frame
+        :return:
+        """
+        # ego vehicle
+        # location
+        ego_location = self.ego_vehicle.get_location()
+        ego_location = np.array([ego_location.x, ego_location.y, ego_location.z])  # in global
+        ego_location = np.matmul(self.transform_matrix, ego_location)  # in local frame
+        # velocity
+        ego_velocity = self.ego_vehicle.get_velocity()
+        ego_velocity = np.array([ego_velocity.x, ego_velocity.y, ego_velocity.z])  # in global
+        ego_velocity = np.matmul(self.transform_matrix, ego_velocity)  # in local frame
+        ego_speed = np.linalg.norm(ego_velocity)
+        ego_velocity_norm = ego_velocity/ego_speed
+
+        # npc vehicle
+        npc_location = self.npc_vehicle.get_location()
+        npc_location = np.array([npc_location.x, npc_location.y, npc_location.z])  # in global
+        npc_location = np.matmul(self.transform_matrix, npc_location)  # in local frame
+
+        npc_velocity = self.npc_vehicle.get_velocity()
+        npc_velocity = np.array([npc_velocity.x, npc_velocity.y, npc_velocity.z])  # in global
+        npc_velocity = np.matmul(self.transform_matrix, npc_velocity)  # in local frame
+        npc_speed = np.linalg.norm(npc_velocity)
+        npc_velocity_norm = npc_velocity/npc_speed
+
+        # todo: normalization
+        # maximum_distance =
+
 
     def cleanup(self, ego=False):
         """
@@ -412,6 +462,36 @@ class Modified_ChallengeEvaluator(object):
                 self.world.apply_settings(settings)
 
                 self.world = None
+
+    def set_npc_vehicle(self):
+        """
+        Consider only 1 npc vehicle.
+        :return:
+        """
+        self.npc_start_coord = np.array([6.0, 171.0, 1.0])
+
+        bp = self.world.get_blueprint_library().find("vehicle.tesla.model3")  # using model3 as npc vehicle
+        bp.set_attribute('role_name', 'npc')
+
+        # get npc location
+        # API: exact_location, waypoint, road_center_location
+        _, waypoint, road_center_location = coords_trans(self.wmap, self.npc_start_coord)
+        # get spawn transform
+        location = road_center_location
+        rotation = waypoint.transform.rotation
+        transform = carla.Transform(location, rotation)
+        # spawn npc
+        self.npc_vehicle = self.world.spawn_actor(bp, transform)
+        self.world.tick()
+
+        # self.set_spectator(transform)  # visualization
+
+        self.npc_vehicle.set_autopilot(True)
+        self.traffic_manager.collision_detection(self.npc_vehicle, self.ego_vehicle, False)  # collision detection
+        self.traffic_manager.ignore_lights_percentage(self.npc_vehicle, 100.0)  # traffic light violation
+
+        print("npc vehicle is set")
+
 
     def prepare_ego_car(self, start_transform):
         """
@@ -480,7 +560,7 @@ class Modified_ChallengeEvaluator(object):
 
         return gps_route, trajectory
 
-    def draw_waypoints(self, waypoints, turn_positions_and_labels, vertical_shift, persistency=-1):
+    def draw_waypoints(self, waypoints, turn_positions_and_labels, vertical_shift, persistency=-1.0):
         """
         Draw a list of waypoints at a certain height given in vertical_shift.
         :param waypoints: list or iterable container with the waypoints to draw
@@ -871,6 +951,69 @@ class Modified_ChallengeEvaluator(object):
         else:
             return False
 
+    def set_spectator_vehicle(self, view=1):
+        """
+        Set spectator on ego vehicle of a certain view.
+        """
+        spectator = self.world.get_spectator()
+        transform = self.ego_vehicle.get_transform()
+
+        if view == 0:
+            # print("Spectator is set to behind view.")
+            # behind distance - d, height - h
+            d = 8
+            h = 8
+            angle = transform.rotation.yaw
+            a = math.radians(180 + angle)
+            location = carla.Location(x=d * math.cos(a), y=d * math.sin(a), z=h) + transform.location
+            rotation = carla.Rotation(yaw=angle, pitch=-15)
+            print("done")
+        elif view == 1:
+            # print("Spectator is set to overhead view.")
+            # h = 100
+            h = 50
+            # h = 20
+            location = carla.Location(0, 0, h)+transform.location
+            rotation = carla.Rotation(yaw=transform.rotation.yaw, pitch=-90)  # rotate to forward direction
+
+        # set spector
+        spectator_transform = carla.Transform(location, rotation)
+        spectator.set_transform(spectator_transform)
+        self.world.tick()
+        # print('spectator set.')
+
+    def valid_sensors_configuration(self, agent, track):
+
+        sensors = agent.sensors()
+
+        for sensor in sensors:
+            if agent.track == Track.ALL_SENSORS:
+                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
+                        'sensor.object_finder') or sensor['type'].startswith('sensor.hd_map'):
+                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
+
+            elif agent.track == Track.CAMERAS:
+                if not (sensor['type'].startswith('sensor.camera.rgb') or sensor['type'].startswith(
+                        'sensor.other.gnss') or sensor['type'].startswith('sensor.can_bus')):
+                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
+
+            elif agent.track == Track.ALL_SENSORS_HDMAP_WAYPOINTS:
+                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
+                        'sensor.object_finder'):
+                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
+            else:
+                if not (sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
+                        'sensor.object_finder') or sensor['type'].startswith('sensor.other.gnss')
+                        or sensor['type'].startswith('sensor.can_bus')):
+                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
+
+            # let's check the extrinsics of the sensor
+            if 'x' in sensor and 'y' in sensor and 'z' in sensor:
+                if math.sqrt(sensor['x'] ** 2 + sensor['y'] ** 2 + sensor['z'] ** 2) > self.MAX_ALLOWED_RADIUS_SENSOR:
+                    return False, "Illegal sensor extrinsics used for Track [{}]!".format(agent.track)
+
+        return True, ""
+
     def worldReset(self, episode_index):
         """
         Reset the world
@@ -903,15 +1046,40 @@ class Modified_ChallengeEvaluator(object):
 
             # easy version test
             self.agent_algorithm = DQNAlgorithm(4, self.agent_instance.get_action_shape())
-            self.agent_algorithm.load_net()
+            # self.agent_algorithm.load_net()
+
+            # use a flag to decide to train/run
+            finetune = 0  # default is to train without previous weight
+            try:
+                if finetune:
+                    # train without weights
+                    self.agent_algorithm.load_net()
+            except:
+                print("Fail to load weight.")
 
         # set algorithm module to agent instance
         self.agent_instance.set_algorithm(self.agent_algorithm)
         self.agent_instance.algorithm.change_rate(episode_index)
 
         elevate_transform = self.route[0][0]
-        elevate_transform.location.z += 0.1
+        elevate_transform.location.z += 1.0
         self.prepare_ego_car(elevate_transform)
+
+        # ==================================================
+        # API
+        # add attribute to agent
+        # set ego_vehicle to agentset_lateral_controller
+        self.agent_instance.set_ego_vehicle(self.ego_vehicle)
+        # set world
+        self.agent_instance.set_world(self.world)
+        # set lateral controller
+        self.agent_instance.set_lateral_controller()
+
+        # test_ego_location = self.ego_vehicle.get_location()
+        # ==================================================
+
+        # set npc vehicle
+        self.set_npc_vehicle()
 
     def run_route(self, trajectory, no_master=False):
 
@@ -923,58 +1091,38 @@ class Modified_ChallengeEvaluator(object):
         last_step_loaction_y = self.route[0][0].location.y
         print('last_time:', last_time)
 
-        # ==================================================
-        # add API
-        # set ego_vehicle to agent
+        # for debug RL lon
+        # set ego vehicle once again
+        # set ego_vehicle to agentset_lateral_controller
         self.agent_instance.set_ego_vehicle(self.ego_vehicle)
         # set world
         self.agent_instance.set_world(self.world)
-        # test_ego_location = self.ego_vehicle.get_location()
-        # ==================================================
+
+
 
         while no_master or self.route_is_running():
             # update all scenarios
             GameTime.on_carla_tick(self.timestamp)
             CarlaDataProvider.on_carla_tick()
-
-            # show
             print("world timestamp: ", self.timestamp)
-            # print("")
 
-            # update all scenarios
-            # read state and take action
-            # 调用callback callback读取传感器状态并采取动作，保存状态功能写在agent中
+            # get geometry state for agent
 
-            # 计算速度
-            # current_step_location = self.ego_vehicle.get_transform().location
-            # current_time = GameTime.get_time()
-            #
-            # speed_x = (current_step_location.x - last_step_loaction_x) / (current_time - last_time)
-            # speed_y = (current_step_location.y - last_step_loaction_y) / (current_time - last_time)
-            # speed_x = speed_x * 10
-            # speed_y = speed_y * 10
-            # print('*' * 50)
-            # print('speedx:', speed_x)
-            # print('speedy:', speed_y)
-            # print('*' * 50)
-            # last_time = current_time
-            # last_step_loaction_x = current_step_location.x
-            # last_step_loaction_y = current_step_location.y
-            #
-            # self.agent_instance.get_state(speed_x,speed_y,steer)
 
-            # 计算动作
+            # get action
             ego_action = self.agent_instance()
-
+            # parse control action
+            # throttle = ego_action
             steer = ego_action.steer
 
+            # tick scenarios stored in list
             for scenario in self.list_scenarios:
                 scenario.scenario.scenario_tree.tick_once()
 
             # print status
-            print("==================================================")
-            print("scenario status: ", self.master_scenario.scenario.scenario_tree.status)
-            print("==================================================")
+            # print("==================================================")
+            # print("scenario status: ", self.master_scenario.scenario.scenario_tree.status)
+            # print("==================================================")
 
             if self.debug > 1:
                 for actor in self.world.get_actors():
@@ -984,36 +1132,14 @@ class Modified_ChallengeEvaluator(object):
             # ego vehicle acts
             self.ego_vehicle.apply_control(ego_action)
 
-            # set spectator
+            # set spectator on vehicle
             if self.spectator:
-                spectator = self.world.get_spectator()
-                ego_trans = self.ego_vehicle.get_transform()
+                self.set_spectator_vehicle()
 
-                # view_selection = ['overhead', 'side', 'behind']
-                view = 'overhead'
-                if view == 'overhead':
-                    # overhead view
-                    h = 30
-                    location = ego_trans.location + carla.Location(z=h)
-                    yaw = ego_trans.rotation.yaw
-                    rotation = carla.Rotation(yaw=yaw, pitch=-90)
-                elif view == 'side':
-                    # sideview
-                    location = ego_trans.location + carla.Location(y=-5) + carla.Location(z=1)
-                    rotation = carla.Rotation(yaw=90)
-                elif view == 'behind':
-                    # behind view
-                    d = 6.4
-                    h = 2.0
-                    angle = ego_trans.rotation.yaw
-                    a = math.radians(180 + angle)
-                    location = carla.Location(d * math.cos(a), d * math.sin(a), h) + ego_trans.location
-                    rotation = carla.Rotation(yaw=angle, pitch=-15)
-
-                # set spector
-                spectator_transform = carla.Transform(location, rotation)
-                spectator.set_transform(spectator_transform)
-                # print('spectator set.')
+            # set ego_vehicle on static view
+            # overhead of local junction
+            # origin_transform =
+            # set_spectator_location(self.world, origin_transform, view_mode=1)
 
             # show current score
             # 打分
@@ -1051,38 +1177,6 @@ class Modified_ChallengeEvaluator(object):
         self.agent_instance.algorithm.update()
         # if self.agent_instance.algorithm.update():
         #     return
-
-    def valid_sensors_configuration(self, agent, track):
-
-        sensors = agent.sensors()
-
-        for sensor in sensors:
-            if agent.track == Track.ALL_SENSORS:
-                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder') or sensor['type'].startswith('sensor.hd_map'):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            elif agent.track == Track.CAMERAS:
-                if not (sensor['type'].startswith('sensor.camera.rgb') or sensor['type'].startswith(
-                        'sensor.other.gnss') or sensor['type'].startswith('sensor.can_bus')):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            elif agent.track == Track.ALL_SENSORS_HDMAP_WAYPOINTS:
-                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder'):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-            else:
-                if not (sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder') or sensor['type'].startswith('sensor.other.gnss')
-                        or sensor['type'].startswith('sensor.can_bus')):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            # let's check the extrinsics of the sensor
-            if 'x' in sensor and 'y' in sensor and 'z' in sensor:
-                if math.sqrt(sensor['x'] ** 2 + sensor['y'] ** 2 + sensor['z'] ** 2) > self.MAX_ALLOWED_RADIUS_SENSOR:
-                    return False, "Illegal sensor extrinsics used for Track [{}]!".format(agent.track)
-
-        return True, ""
 
     def load_environment_and_run(self, args, world_annotations=''):
 
@@ -1230,12 +1324,9 @@ if __name__ == '__main__':
 
     try:
 
-
-
-
-        challenge_evaluator = Modified_ChallengeEvaluator(ARGUMENTS)
-        challenge_evaluator.run(ARGUMENTS)
+        scenario_env = ScenarioEnv(ARGUMENTS)
+        scenario_env.run(ARGUMENTS)
     except Exception as e:
         traceback.print_exc()
     finally:
-        del challenge_evaluator
+        del scenario_env

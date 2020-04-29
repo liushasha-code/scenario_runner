@@ -1,3 +1,29 @@
+from __future__ import print_function
+
+import glob
+import os
+import sys
+
+# using carla 095
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla")
+sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
+carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'  # carla egg
+
+# if using carla098
+# sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla")
+# sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla/agents")
+# carla_path = '/home/lyq/CARLA_simulator/CARLA_098/PythonAPI'
+
+try:
+    sys.path.append(glob.glob(carla_path + '/carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+except IndexError:
+    pass
+
+import carla
+
 import cv2
 import numpy as np
 import time
@@ -31,8 +57,6 @@ try:
     from pygame.locals import K_EQUALS
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
-
-import carla
 
 from srunner.challenge.autoagents.autonomous_agent import AutonomousAgent, Track
 

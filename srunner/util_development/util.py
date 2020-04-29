@@ -30,7 +30,7 @@ def delete_vehicles(world):
             actor.destroy()
         print("vehicles are deleted")
 
-def set_spectator(vehicle):
+def set_spectator_on_vehicle(vehicle):
     """
     Set spectator for a specified actor(vehicle)
 
@@ -212,42 +212,80 @@ def plot_local_coordinate_frame(world, origin_transform, axis_length_scale = 3):
     # draw z axis
     world.debug.draw_arrow(Origin_location, z_des, color=z_axis_color)
 
-
-def get_state(self):
+def plot_route(world, trajectory):
     """
-    Get state for DRL.
+        Plot the complete route.
     :return:
     """
-    local_coord =
+    for item in trajectory:
+        transform = item[0]
+        scalar = 0.5
+        yaw = np.deg2rad(transform.rotation.yaw)
+        vector = scalar * np.array([np.cos(yaw), np.sin(yaw)])
+        start = transform.location
+        end = start + carla.Location(x=vector[0], y=vector[1], z=start.z)
+        # plot the waypoint
+        debug = world.debug
+        debug.draw_arrow(start, end, thickness=0.25, arrow_size=0.25, color=Red, life_time=9999)
+        debug.draw_point(start, size=0.05, color=Green, life_time=9999)
+        world.tick()
 
-    # vector3D in global frame
-    ego_transform = self.ego_vehicle.get_transform()
-    ego_location = ego_transform.Location
-    ego_velocity = self.ego_vehicle.get_velocity()
+def coords_trans(map, coords, up_lift=True):
+    """
+    Transform a coords to carla location and waypoint.
+    :param coords: list or ndarray, store the coords of a certain point in map, z coord is not necessary.
+    :return: location, waypoint
+    """
+    if len(coords) < 3:
+        coords = np.append(coords, [0])
+        pass
 
-    # transform to local frame
-    origin_transform =
-    local
+    exact_location = carla.Location(x=coords[0], y=coords[1], z=coords[2])
+    waypoint = map.get_waypoint(exact_location)  # carla.waypoint
+    road_center_location = waypoint.transform.location
 
-    self.npc_list = []
+    if up_lift == True:
+        exact_location.z += 1.0
+        road_center_location.z += 1.0
 
-    npc_num = 1
-    state_dict = {
-        "ego_state": {
-            "location": ,
-            "velocity": ego_velocity,
-            "azimuth"：
-            "Angular_velocity":
-        },
-        "npc_state": {
-            "npc": npc_num,
+    return exact_location, waypoint, road_center_location
 
-
-        }
-    }
-
-
-    return state_dict
+# def get_state(world, ego_vehicle, npc_list, ego_route):
+#     """
+#     todo: finish input args
+#     Get state for ego vehicle DRL algorithm.
+#     :return:
+#     """
+#     local_coord =
+#
+#     # vector3D in global frame
+#     ego_transform = self.ego_vehicle.get_transform()
+#     ego_location = ego_transform.Location
+#     ego_velocity = self.ego_vehicle.get_velocity()
+#
+#     # transform to local frame
+#     origin_transform =
+#     local
+#
+#     self.npc_list = []
+#
+#     npc_num = 1
+#     state_dict = {
+#         "ego_state": {
+#             "location": ,
+#             "velocity": ego_velocity,
+#             "azimuth"：
+#             "Angular_velocity":
+#         },
+#         "npc_state": {
+#             "npc": npc_num,
+#
+#
+#         }
+#     }
+#
+#
+#     return state_dict
 
 
 
