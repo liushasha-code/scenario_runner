@@ -1,24 +1,15 @@
 """
-Generate traffic flow around junction
+Generate traffic flow in a junction scenario.
+
+Reconstruct class using BasicEnv class.
+
 """
 
 from __future__ import print_function
-
 import glob
 import os
 import sys
 
-# using carla 095
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla")
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
-# carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'  # carla egg
-
-# using carla096
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_096/PythonAPI/carla")
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_096/PythonAPI/carla/agents")
-# carla_path = '/home/lyq/CARLA_simulator/CARLA_096/PythonAPI'
-
-# using carla098
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla")
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla/agents")
 carla_path = '/home/lyq/CARLA_simulator/CARLA_098/PythonAPI'
@@ -43,6 +34,7 @@ import traceback
 from agents.navigation.local_planner import LocalPlanner
 from agents.navigation.global_route_planner import GlobalRoutePlanner
 from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+from agents.tools.misc import vector
 
 # scenario_runner module
 from srunner.tools.scenario_helper import generate_target_waypoint
@@ -64,6 +56,7 @@ class test_and_visualization():
     start_coord = np.array([53.0, 128.0, 3.0])
     start_location = carla.Location(x=53.0, y=128.0, z=3.0)
     start_rotation = carla.Rotation(pitch=0.0, yaw=180.0, roll=0.0)
+
 
     """
     # origin of junction frame 
@@ -109,6 +102,36 @@ class test_and_visualization():
     Transform(Location(x=-6.268355, y=90.840492, z=0.000000), Rotation(pitch=0.000000, yaw=89.637459, roll=0.000000))
 
     """
+
+    def get_junction(self, waypoint):
+        """
+        Get a forward junction.
+        :param start_point: The start waypoint of a route. carla.Location
+        :return: junction to approach, carla.Junction
+        """
+
+        sampling_radius = 1.0
+
+        while True:
+            wp_choice = waypoint.next(sampling_radius)
+            #   Choose path at intersection
+            if len(wp_choice) > 1:
+                reached_junction = wp_choice[0].is_junction
+                if reached_junction:
+                    junction = wp_choice[0].get_junction()
+                    break
+
+        # lane_type =
+        wp_pair_list = junction.get_waypoints(lane_type)
+
+
+
+
+
+        return
+
+
+
 
     def spawn_traffic_flow(self):
         """
