@@ -39,7 +39,7 @@ orange = carla.Color(r=255, g=162, b=0)
 white = carla.Color(r=255, g=255, b=255)
 
 
-class BasicEnv(object):
+class BasicEnv:
     """
     The basic class to generate a carla env for test.
     """
@@ -61,7 +61,7 @@ class BasicEnv(object):
     def set_world(self, sync_mode=False, frame_rate=50.0, no_render_mode=False):
         """
         Setup carla world settings.
-        Under sync_mode, require world.tick() to run
+        Under sync_mode(sync_mode = True), require world.tick() to run
         """
         settings = self.world.get_settings()
         # world settings parameters
@@ -172,3 +172,17 @@ class BasicEnv(object):
         """
         coords = np.array([location.x, location.y, location.z])
         return coords
+
+
+def main():
+    try:
+        test = BasicEnv()
+        print('test env is created.')
+    except:
+        traceback.print_exc()
+    finally:
+        del test
+
+
+if __name__ == '__main__':
+    main()

@@ -48,6 +48,7 @@ from srunner.util_development.scenario_helper_modified import *
 from srunner.util_development.util_junction import (TransMatrix_yaw,
                                                     plot_local_coordinate_frame)
 
+
 class test_and_visualization():
     """
     A easy test tool to check if scenario is correctly generated.
@@ -121,14 +122,14 @@ class test_and_visualization():
                     junction = wp_choice[0].get_junction()
                     break
 
-        # lane_type =
+        lane_type = wp_choice.lane_type
         wp_pair_list = junction.get_waypoints(lane_type)
 
 
 
 
-
-        return
+        print('junction got')
+        # return
 
 
 
