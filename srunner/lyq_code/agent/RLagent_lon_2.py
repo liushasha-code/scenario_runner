@@ -1,7 +1,12 @@
 """
-Based on original RLagent: RLagnet_modified_easy
+Based on RLagent_lon
+Action space consider only longitudinal control.
 
-Action space consider lon and lat
+Using A* to generate a local route
+Using local_planner(PID) to take over lateral control.
+
+In developing: move some env methods into agent module,
+i.e. generate route
 
 2020.04.23
 fixed state representation for junction scenario.
@@ -53,14 +58,14 @@ from collections import deque
 # import from util
 from srunner.util_development.util import get_rotation_matrix_2D
 
+# PID controller
+from srunner.challenge.autoagents.agent_development.lat_control.controller_modified import PIDLateralController
+
 # import carla.ColorConverter
 
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# 由于每次Reset会删除当前Agent并重新产生，所以网络参数应与Agent脱离
-# 此RL训练用Agent只负责与网络进行状态变量的预处理和传输以及动作的执行
 
 """
 # local frame origin
@@ -84,7 +89,8 @@ class RLAgent(AutonomousAgent):
         self.next_state = None
         self.reward = None
 
-        self.image_shape = (3, 300, 200)
+        # original input and action space for RL
+        # self.image_shape = (3, 300, 200)
         self.action_space = []
         self.action_shape = None
         # self.steer_space = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
@@ -93,9 +99,23 @@ class RLAgent(AutonomousAgent):
 
         # agent's initialization
         self.setup(path_to_conf_file)
-        self.generate_action_space()
+
+        # generate action space
+        # self.generate_action_space()
         # image index???
         self.index = 0
+
+
+
+        # ==================================================
+        # Action space only consider longitudinal control
+        self.acc_space = self.acc_space = [0.0, 0.5, 1.0]
+        # todo: use a dense action space with number n
+        self.action_shape = len(self.acc_space)
+
+        self.get_action_space2()
+
+        # ==================================================
 
         self.episode_index = episode_index
 
@@ -117,6 +137,11 @@ class RLAgent(AutonomousAgent):
         # self._min_distance = self._sampling_radius * self.MIN_DISTANCE_PERCENTAGE
         self._min_distance = 3  # min distance of reaching waypoints
 
+        # ==================================================
+        # set lateral controller
+        self.lateral_controller = None  # lateral controller will be set later by env script
+        # self.set_lateral_controller()
+
     def setup(self, path_to_conf_file):
         """
         Initialize everything needed by your agent and set the track attribute to the right type:
@@ -126,6 +151,25 @@ class RLAgent(AutonomousAgent):
             Track.SCENE_LAYOUT : No sensors allowed, the agent receives a high-level representation of the scene.
         """
         self.track = Track.CAMERAS
+
+    def set_lateral_controller(self, args_lateral=None):
+        """
+        Set controller for the ego vehicle
+        Current is only lateral controller.
+        """
+        # set up PID controller
+        args_lateral_dict = {
+            'K_P': 1.95,
+            'K_D': 0.01,
+            'K_I': 1.4,
+            'dt': 0.03}
+
+        # todo: check if get dict correctly
+        # init controller
+        if not args_lateral:
+            args_lateral = args_lateral_dict
+
+        self.lateral_controller = PIDLateralController(self.ego_vehicle, **args_lateral)
 
     def sensors(self):
         """
@@ -140,10 +184,20 @@ class RLAgent(AutonomousAgent):
         ]
         return sensors
 
-    # 根据steer_num和acc_num划分离散动作空间
     def generate_action_space(self):
+        """
+        根据steer_num和acc_num划分离散动作空间
+        :return:
+        """
         for item in product(self.steer_space, self.acc_space):
             self.action_space.append(item)
+        self.action_shape = len(self.action_space)
+
+    def get_action_space2(self):
+        """
+        Get action space of only longitudinal action.
+        """
+        self.action_space = self.acc_space
         self.action_shape = len(self.action_space)
 
     def buffer_waypoint(self):
@@ -341,16 +395,30 @@ class RLAgent(AutonomousAgent):
         action_index = self.algorithm.select_action(state_list_tensor[0], state_list_tensor[1], state_3_tensor,
                                                     state_4_tensor)  # get sparse action index
 
-        print("action_index: ", action_index)
+        # print("action_index: ", action_index)  # print selected action index
 
-        # action space bug
-        if action_index == 15:
-            print("action space error")
+        # get next transform in buffer as target waypoint
+        # format is carla.transform
+        target_waypoint_trans = self._waypoint_buffer[0][0]
+
+        # get lateral control by run step controller
+        steering = self.lateral_controller.run_step(target_waypoint_trans)
+
+        # # todo: figure out if index>=15
+        # # action space bug
+        # if action_index == 15:
+        #     print("action space error")
 
         # get corresponding actual action
-        self.action = action_index
-        control.steer = self.action_space[action_index][0]
-        acc = self.action_space[action_index][1]
+        self.action = action_index  # keep this to update RL
+
+        # control.steer = self.action_space[action_index][0]  # to be fixed
+        # acc = self.action_space[action_index][1]
+
+        acc = self.action_space[action_index]
+
+        control.throttle = self.action_space[action_index]
+        control.steer = steering
 
         # if acc >= 0.0:
         #     control.throttle = acc
@@ -358,7 +426,7 @@ class RLAgent(AutonomousAgent):
         # else:
         #     control.throttle = 0.0
         #     control.brake = abs(acc)
-        control.throttle = acc
+        # control.throttle = acc
         print('throttle:', control.throttle)
         print('steer:', control.steer)
 
@@ -422,7 +490,11 @@ class RLAgent(AutonomousAgent):
         return self.sensor_interface.all_sensors_ready()
 
     def set_global_plan(self, global_plan_gps, global_plan_world_coord):
-
+        """
+        Get global plan from env.
+        :param global_plan_gps: route in gps
+        :param global_plan_world_coord: route in world coords
+        """
         if self.track == Track.CAMERAS or self.track == Track.ALL_SENSORS:
             ds_ids = downsample_route(global_plan_world_coord, 32)
 
@@ -433,19 +505,26 @@ class RLAgent(AutonomousAgent):
         else:  # No downsampling is performed
 
             self._global_plan = global_plan_gps
-            self._global_plan_world_coord = global_plan_world_coord
+            self._global_plan_world_coord = global_plan_world_coord  # this is the final route to follow
 
-        # =============================================
-        # get waypoints in queue
+        # ==================================================
+        # get waypoints in queue for buffering
         self._waypoints_queue.clear()
         # for elem in self._global_plan_world_coord:
         for elem in global_plan_world_coord:
             self._waypoints_queue.append(elem)
 
-        # print('done')
+        # print('debug global route')
 
     def get_image_shape(self):
         return self.image_shape
+
+    def get_state_shape(self):
+        """
+
+        :return:
+        """
+        return self.state_shape
 
     def get_action_shape(self):
         return self.action_shape
@@ -470,7 +549,7 @@ class RLAgent(AutonomousAgent):
         if self.index % interval == 0:
             im = Image.fromarray(image)
             # im.save('/home/guoyoutian/scenario_runner-0.9.5/DQN/image/'+ path + '/' +str(self.episode_index) + '_%03d.jpeg' %(self.index/interval))
-            print("image ")
+            print("image")
 
     def get_navigation_state(self):
         """

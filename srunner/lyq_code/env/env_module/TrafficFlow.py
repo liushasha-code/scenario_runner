@@ -73,6 +73,9 @@ junction_center = carla.Location(x=-1.32, y=132.69, z=0.00)
 class TrafficFlow:
     """
     Generate and manage a multi-direction continuous traffic flow in RL training environment.
+
+    todo: get_junction, get_npc_spawn_point is in developing
+
     """
 
     # ==================================================
@@ -121,14 +124,22 @@ class TrafficFlow:
         self.debug = self.world.debug  # world debug for plot
         self.blueprint_library = self.world.get_blueprint_library()  # blueprint
         self.traffic_manager = self.client.get_trafficmanager()
-        # all vehicles spawned by traffic flow
+        # all npc vehicles spawned by traffic flow
         self.npc_vehicles = []  # using list to manage npc vehicle
+        self.count = 0  # total amount of spawned npc vehicles
+        self.ego_vehicle = None  # ego vehicle in env
 
     def get_npc_list(self):
         """
         Get npc list spawned by traffic flow module
         """
         return self.npc_vehicles
+
+    def set_ego_vehicle(self, ego_vehicle):
+        """
+        Get ego vehicle from env for traffic flow module
+        """
+        self.ego_vehicle = ego_vehicle
 
     def draw_waypoint(self, transform, color=[red, green]):
         """
@@ -177,8 +188,8 @@ class TrafficFlow:
         transform = carla.Transform(location, rotation)
         # self.set_spectator(transform, 30)
 
-        """
         # ==================================================
+        """
         # test carla.Junction get_waypoints method
         lane_type = wp_choice[0].lane_type
         wp_pair_list = junction.get_waypoints(lane_type)  # not quite understand how this list work
@@ -186,47 +197,19 @@ class TrafficFlow:
         for tp in wp_pair_list:
             self.draw_waypoint(tp[0])
             self.draw_waypoint(tp[1])
-        # ==================================================
         """
+        # ==================================================
 
         # print('testing get_junction method')
         return junction
 
     def get_npc_spawn_point(self):
         """
-        Get npc vehicle spawn point.
+        Get npc vehicle spawn point in a junction scenario.
 
-        Current method is highly related to Town03 junction.
+        Current method is designed based on Town03 junction.
 
-        todo: suit random junction
-        :return:
-        """
-
-        """
-        Result of start point
-        dist = 15
-        left
-        carla.Transform(Location(x=5.672707, y=160.509659, z=0.000000),
-                  Rotation(pitch=360.000000, yaw=269.637451, roll=0.000000))
-        straight
-        carla.Transform(Location(x=-31.933237, y=134.692108, z=0.000000), 
-                  Rotation(pitch=0.000000, yaw=-1.296802, roll=0.000000))
-        right
-        carla.Transform(Location(x=-6.173447, y=105.839890, z=0.000000), 
-                  Rotation(pitch=0.000000, yaw=89.637459, roll=0.000000))
-
-        dist = 30
-        left
-        carla.Transform(Location(x=5.767616, y=175.509048, z=0.000000), 
-                        Rotation(pitch=360.000000, yaw=269.637451, roll=0.000000))
-
-        straight
-        carla.Transform(Location(x=-46.925552, y=135.031494, z=0.000000), 
-                        Rotation(pitch=0.000000, yaw=-1.296802, roll=0.000000))
-
-        right
-        carla.Transform(Location(x=-6.268355, y=90.840492, z=0.000000), 
-                        Rotation(pitch=0.000000, yaw=89.637459, roll=0.000000))
+        todo: suit for random junction
         """
 
         # plot junction coord frame
@@ -286,7 +269,12 @@ class TrafficFlow:
         print("npc spawn location is generated.")
 
     def set_autopilot(self, vehicle, p_collision):
-        """"""
+        """
+        Set autopilot for specified vehicle
+
+        :param vehicle: target vehicle(npc)
+        :param p_collision: probability to avoid collision with ego vehicle
+        """
         # set traffic manager for each vehicle
         vehicle.set_autopilot(True)
         # ignore traffic lights
@@ -333,10 +321,13 @@ class TrafficFlow:
         return vehicle
 
     def get_time_interval(self):
-        """"""
-        # generate a time interval for next vehicle
+        """
+        Time interval till next vehicle spawning in seconds.
+        :return: time_interval, float
+        """
+        # parameters
         lower_limit = 1.0
-        upper_limit = 5.0
+        upper_limit = 8.0
         time_interval = random.uniform(lower_limit, upper_limit)
 
         return time_interval
@@ -356,7 +347,7 @@ class TrafficFlow:
         """
         Check if distance to junction origin exceed limits.
 
-        todo: transform of each traffic flow
+        todo: junction center as class attribute
         """
         limit = 65.0
         dist = junction_center.distance(vehicle.get_transform().location)
@@ -478,12 +469,13 @@ class TrafficFlow:
                 time_rule = False
 
             if distance_rule and time_rule:
-                name = key + str(self.count + 1)  # name of the actor to be spawned
+                name = key + str(self.npc_info[key]['count'] + 1)  # name of the actor to be spawned
                 try:
                     vehicle = self.spawn_npc(transform, name)
                     self.npc_vehicles.append(vehicle)  # add to npc vehicles list
                     self.npc_info[key]['actor_list'].append(vehicle)  # only store id
                     self.npc_info[key]['count'] += 1
+                    self.count += 1
                     # update last spawn time when new vehicle spawned
                     self.npc_info[key]['last_spawn_time'] = self.get_time()
                     # time interval till spawn next vehicle
@@ -496,47 +488,18 @@ class TrafficFlow:
 
             # print('testing spawn traffic flow')
 
-    def run(self):
+    def __call__(self):
         """"""
+        self.run_step()
 
-        # set spectator on the junction
-        location = junction_center
-        rotation = start_rotation
-        transform = carla.Transform(location, rotation)
-        self.set_spectator(transform, view=1, h=100)
+    def run_step(self):
+        """"""
+        # check and spawn new npc vehicles
+        self.spawn_all_traffic_flow()
+        # check and delete npc vehicles
+        self.delete_npc()
 
-        while True:
-
-            # self.spawn_traffic_flow()
-            self.spawn_all_traffic_flow()
-
-            # check and delete
-            self.delete_npc()
-            self.world.tick()
-
-
-def main():
-    try:
-        # create a env by instantiation
-        test = TestTrafficFlow()
-
-        test.run()
-
-        # test get junction
-        waypoint = test.map.get_waypoint(start_location)
-        test.get_junction(waypoint)
-
-    except:
-        traceback.print_exc()
-    finally:
-        del test
-
-if __name__ == '__main__':
-    main()
-
-
-
-
+        # print("")
 
 
 

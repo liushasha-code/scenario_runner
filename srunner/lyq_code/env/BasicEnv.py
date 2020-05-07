@@ -177,6 +177,9 @@ class BasicEnv:
 def main():
     try:
         test = BasicEnv()
+
+        map_name = test.map.name
+
         print('test env is created.')
     except:
         traceback.print_exc()

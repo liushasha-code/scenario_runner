@@ -1,9 +1,10 @@
 """
-Creation log 2020.04.22
-This is a DRL training environment with following features:
-1. Modified from s2e
-2. suits carla 098 features
-3. add some new features to train agent in junction scenario.
+Modified from CarlaEnv_Junction.
+
+A developing env to train RL agent for junction scenario.
+
+log 2020.05.07
+Add traffic flow module.
 
 """
 
@@ -84,6 +85,9 @@ from srunner.scenariomanager.traffic_events import TrafficEventType
 from srunner.challenge.utils.route_manipulation import interpolate_trajectory, clean_route
 
 # ==================================================
+# developing module
+
+from srunner.lyq_code.env.env_module.TrafficFlow import TrafficFlow  # class name same as py script
 
 # original
 # from srunner.challenge.autoagents.RLagent import RLAgent
@@ -98,6 +102,8 @@ from srunner.challenge.utils.route_manipulation import interpolate_trajectory, c
 from srunner.util_development.util import *
 from srunner.util_development.util import coords_trans
 # easy test
+
+
 # from srunner.challenge.autoagents.RLagent_junction import RLAgent
 from srunner.challenge.autoagents.RLagent_lon import RLAgent
 # from srunner.challenge.algorithm.dqn import DQNAlgorithm
@@ -139,12 +145,22 @@ scenario_para_dict = {
     # 'end_point': np.array([5.24, 92.28, 0]),
 }
 
-# carla color for different object
-Red = carla.Color(r=255, g=0, b=0)
-Green = carla.Color(r=0, g=255, b=0)
-Blue = carla.Color(r=255, g=0, b=0)
-Yellow = carla.Color(r=255, g=255, b=0)
-Magenta = carla.Color(r=255, g=0, b=255)
+# parameters for scenario
+start_location = carla.Location(x=53.0, y=128.0, z=3.0)
+start_rotation = carla.Rotation(pitch=0.0, yaw=180.0, roll=0.0)  # standard transform of this junction
+start_transform = carla.Transform(start_location, start_rotation)
+# junction center
+junction_center = carla.Location(x=-1.32, y=132.69, z=0.00)
+
+# common carla color
+red = carla.Color(r=255, g=0, b=0)
+green = carla.Color(r=0, g=255, b=0)
+blue = carla.Color(r=0, g=0, b=255)
+yellow = carla.Color(r=255, g=255, b=0)
+magenta = carla.Color(r=255, g=0, b=255)
+yan = carla.Color(r=0, g=255, b=255)
+orange = carla.Color(r=255, g=162, b=0)
+white = carla.Color(r=255, g=255, b=255)
 
 def convert_json_to_actor(actor_dict):
     node = ET.Element('waypoint')
@@ -209,7 +225,7 @@ def plot_route(world, trajectory):
         # plot the waypoint
         debug = world.debug
         debug.draw_arrow(start, end, thickness=0.25, arrow_size=0.25, color=Red, life_time=9999)
-        debug.draw_point(start, size=0.05, color=Green, life_time=9999)
+        debug.draw_point(start, size=0.05, color=green, life_time=9999)
         world.tick()
 
 def get_rotation_matrix_2D(transform):
@@ -226,38 +242,6 @@ def get_rotation_matrix_2D(transform):
                                    [sy, cy]])
     return rotation_matrix_2D
 
-def set_spectator_location(world, transform, view_mode=0):
-    """
-        Set spectator at different viewpoint.
-
-        param waypoint: a carla waypoint class
-
-    """
-    # transform = waypoint.transform
-    location = transform.location
-    rotation = transform.rotation
-
-    if view_mode == 0:
-        print("Spectator is set to behind view.")
-        # behind distance - d, height - h
-        d = 8
-        h = 8
-        angle = transform.rotation.yaw
-        a = math.radians(180 + angle)
-        location = carla.Location(x=d * math.cos(a), y=d * math.sin(a), z=h) + transform.location
-        rotation = carla.Rotation(yaw=angle, pitch=-15)
-        print("done")
-    elif view_mode == 1:
-        print("Spectator is set to overhead view.")
-        h = 100
-        h = 50
-        location = carla.Location(0, 0, h)+transform.location
-        rotation = carla.Rotation(yaw=rotation.yaw, pitch=-90)  # rotate to forward direction
-
-    spectator = world.get_spectator()
-    spectator.set_transform(carla.Transform(location, rotation))
-    world.tick()
-    # print("spectator is reset")
 
 class ScenarioEnv(object):
     """
@@ -269,21 +253,15 @@ class ScenarioEnv(object):
 
     def __init__(self, args):
 
-        # retrieving scenario_runner root
-        scenario_runner_root = os.getenv('ROOT_SCENARIO_RUNNER', '/workspace/scenario_runner')
-
         # remaining simulation time available for this time in seconds
         challenge_time_available = int(os.getenv('CHALLENGE_TIME_AVAILABLE', '1080000'))
         self.challenge_time_available = challenge_time_available
 
-        if args.spectator:
-            self.spectator = args.spectator
-        else:
-            self.spectator = False
-
         self.track = args.track
 
         self.debug = args.debug
+
+
         self.ego_vehicle = None
         self._system_error = False
         self.actors = []
@@ -296,6 +274,8 @@ class ScenarioEnv(object):
         self.world = None
         self.agent_instance = None
 
+
+        # scenarios
         self.master_scenario = None
         self.background_scenario = None
         self.list_scenarios = []
@@ -336,6 +316,8 @@ class ScenarioEnv(object):
         # get some necessary API
         # self.debug = self.world.debug
 
+        self.spectator = self.world.get_spectator()
+
         # set traffic manager
         self.traffic_manager = self.client.get_trafficmanager()
 
@@ -365,6 +347,9 @@ class ScenarioEnv(object):
         self.agent_algorithm = None
         self.last_step_dist = self.route_length
 
+        # trafficflow module
+        self.trafficflow = TrafficFlow(self.client, self.world)
+
     def reach_ending_point(self):
         return False
 
@@ -381,18 +366,6 @@ class ScenarioEnv(object):
         self.transform_matrix = np.array([[c_yaw, s_yaw, 0],
                                          [-s_yaw, c_yaw, 0],
                                           [0, 0, 1]])
-
-    def set_static_view(self):
-        """
-        Set spectator at static view over junction
-        :return:
-        """
-        spectator_transform = carla.Transform(carla.Location(x=5.0, y=140.0, z=0.000000),
-                                         carla.Rotation(pitch=360.000000, yaw=269.637451, roll=0.000000))
-
-        # plot local coordinate frame
-        pass
-
 
     def get_geometry_state(self):
         """
@@ -953,36 +926,38 @@ class ScenarioEnv(object):
         else:
             return False
 
-    def set_spectator_vehicle(self, view=1):
+    def set_spectator(self, view=0):
         """
-        Set spectator on ego vehicle of a certain view.
-        """
-        spectator = self.world.get_spectator()
-        transform = self.ego_vehicle.get_transform()
+        Set spectator at different view
 
+        todo: different options
+        """
         if view == 0:
-            # print("Spectator is set to behind view.")
-            # behind distance - d, height - h
-            d = 8
-            h = 8
+            # print("Set overhead view on junction.")
+            # height = h
+            height = 100
+            location = carla.Location(0, 0, height) + junction_center
+            rotation = carla.Rotation(yaw=start_rotation.yaw, pitch=-90)  # rotate to forward direction
+        elif view == 1:
+            print("Set behind view on vehicle.")
+            _d = 8  # behind distance
+            _h = 8  # height
+            transform = self.ego_vehicle.get_transform()
             angle = transform.rotation.yaw
             a = math.radians(180 + angle)
-            location = carla.Location(x=d * math.cos(a), y=d * math.sin(a), z=h) + transform.location
+            location = carla.Location(x=_d * math.cos(a), y=_d * math.sin(a), z=_h) + transform.location
             rotation = carla.Rotation(yaw=angle, pitch=-15)
-            print("done")
-        elif view == 1:
-            # print("Spectator is set to overhead view.")
-            # h = 100
-            h = 50
-            # h = 20
-            location = carla.Location(0, 0, h)+transform.location
-            rotation = carla.Rotation(yaw=transform.rotation.yaw, pitch=-90)  # rotate to forward direction
+        elif view == 2:
+            print("Set overhead view on vehicle.")
+            # height = h
+            height = 30
+            transform = self.ego_vehicle.get_transform()
+            location = carla.Location(0, 0, height) + transform.location
+            rotation = self.wmap.get_waypoint(transform.location).transform.rotation
+            rotation = carla.Rotation(yaw=rotation.yaw, pitch=-90)  # rotate to forward direction
 
-        # set spector
-        spectator_transform = carla.Transform(location, rotation)
-        spectator.set_transform(spectator_transform)
+        self.spectator.set_transform(carla.Transform(location, rotation))
         self.world.tick()
-        # print('spectator set.')
 
     def valid_sensors_configuration(self, agent, track):
 
@@ -1277,58 +1252,17 @@ if __name__ == '__main__':
     PARSER.add_argument("--config", type=str, help="Path to Agent's configuration file", default=" ")
     PARSER.add_argument("-m", "--map", type=str, help="Town name",
                         default="Town03")
-    PARSER.add_argument("-s", "--starting", type=str,
-                        help="Agent's Starting point(Transform format:(x,y,z,pitch,yaw,row))",
-                        default=[53.0, 128.0, 1.0])  # this is a default start point of a right turn scenario
-    PARSER.add_argument("-e", "--ending", type=str, help="Agent's Ending point(Transform format:(x,y,z,pitch,yaw,row))",
-                        default=[5.24, 92.28, 0])  # this is a default start point of a right turn scenario, 30m after the junction
-    # PARSER.add_argument('--scenarios',
-    #                     help='Name of the scenario annotation file to be mixed with the route.')
+
     PARSER.add_argument('--track', type=int, help='track type', default=4)
-    PARSER.add_argument('--spectator', type=bool, help='Switch spectator view on?', default=True)
     PARSER.add_argument('--rendering', type=bool, help='Switch rendering on?', default=True)
     PARSER.add_argument('--debug', type=int, help='Run with debug output', default=0)
 
     ARGUMENTS = PARSER.parse_args()
 
-    # CARLA_ROOT = os.environ.get('CARLA_ROOT')
-    # ROOT_SCENARIO_RUNNER = os.environ.get('ROOT_SCENARIO_RUNNER')
-
-    # set carla root manually
-    CARLA_ROOT = "/home/lyq/CARLA_simulator/CARLA_095"
-    ROOT_SCENARIO_RUNNER = "/home/lyq/PycharmProjects/scenario_runner"  # v095 scenario_runner
-
-    if not CARLA_ROOT:
-        print("Error. CARLA_ROOT not found. Please run setup_environment.sh first.")
-        sys.exit(0)
-
-    if not ROOT_SCENARIO_RUNNER:
-        print("Error. ROOT_SCENARIO_RUNNER not found. Please run setup_environment.sh first.")
-        sys.exit(0)
-
-    if ARGUMENTS.map is None:
-        print("Please specify a map \n\n")
-        PARSER.print_help(sys.stdout)
-        sys.exit(0)
-
-    if ARGUMENTS.starting is None:
-        print("Please specify a strating point(Transform)  \n\n")
-        PARSER.print_help(sys.stdout)
-        sys.exit(0)
-
-    if ARGUMENTS.ending is None:
-        print("Please specify a ending point(Transform)  \n\n")
-        PARSER.print_help(sys.stdout)
-        sys.exit(0)
-
-    ARGUMENTS.carla_root = CARLA_ROOT
-    challenge_evaluator = None
-
     try:
-
-        scenario_env = ScenarioEnv(ARGUMENTS)
-        scenario_env.run(ARGUMENTS)
+        env = ScenarioEnv(ARGUMENTS)
+        env.run(ARGUMENTS)
     except Exception as e:
         traceback.print_exc()
     finally:
-        del scenario_env
+        del env
