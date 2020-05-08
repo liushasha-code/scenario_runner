@@ -1,6 +1,12 @@
 """
-Test spawn actor failure in carla 098.
+Test spawn actor method in carla 098.
 
+To debug spawn vehicle failure.
+
+Result:
+When usign spawn actor method, collision detection is different.
+
+z value of location should be larger(>1.0) to avoid failure.
 
 """
 

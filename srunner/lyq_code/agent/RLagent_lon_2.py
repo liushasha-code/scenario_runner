@@ -61,22 +61,19 @@ from srunner.util_development.util import get_rotation_matrix_2D
 # PID controller
 from srunner.challenge.autoagents.agent_development.lat_control.controller_modified import PIDLateralController
 
-# import carla.ColorConverter
-
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-"""
-# local frame origin
-# carla.transform
-# Location(x=5.421652, y=120.832970, z=0.000000)
-# Rotation(pitch=360.000000, yaw=269.637451, roll=0.000000)
-"""
 
-class RLAgent(AutonomousAgent):
-    def __init__(self, path_to_conf_file, episode_index):
-        super(RLAgent, self).__init__(path_to_conf_file)  # useless, no config file
+class RLAgent:
+    """
+    Package methods of getting state and reward in RL training.
+
+    """
+    def __init__(self, world, episode_index):
+
+
         # RLagent net
         self.algorithm = None
         # current global plans to reach a destination
@@ -96,9 +93,6 @@ class RLAgent(AutonomousAgent):
         # self.steer_space = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
         self.steer_space = [-1.0, -0.5, 0.0, 0.5, 1.0]
         self.acc_space = [0.0, 0.5, 1.0]
-
-        # agent's initialization
-        self.setup(path_to_conf_file)
 
         # generate action space
         # self.generate_action_space()
@@ -151,6 +145,8 @@ class RLAgent(AutonomousAgent):
             Track.SCENE_LAYOUT : No sensors allowed, the agent receives a high-level representation of the scene.
         """
         self.track = Track.CAMERAS
+
+
 
     def set_lateral_controller(self, args_lateral=None):
         """

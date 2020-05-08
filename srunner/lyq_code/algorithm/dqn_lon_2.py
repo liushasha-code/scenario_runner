@@ -117,14 +117,13 @@ class DQNAlgorithm(object):
         self.learn_step_counter = 0
         self.memory_counter = 0
         self.memory = [None] * self.capacity
-        # already fixed path, use relative path
-        self.writer = SummaryWriter('./DQN_save/logs/training_test')
 
         # debug path test
         # self.path = "/home/lyq/PycharmProjects/scenario_runner/srunner/challenge/DQN/DQN_training_test/"
 
         # original
-        self.path = './DQN_save/'
+        self.path = './DQN_save/'  # store weight
+        self.writer = SummaryWriter('./DQN_save/logs/training_test')  # store training process
 
         self.total_reward = 0.0
         self.episode_reward = 0.0

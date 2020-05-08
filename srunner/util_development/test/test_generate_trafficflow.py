@@ -1,7 +1,7 @@
 """
 Generate traffic flow in a junction scenario.
 
-Reconstruct class using BasicEnv class.
+todo: using BasicEnv to reconstruct module.
 
 """
 

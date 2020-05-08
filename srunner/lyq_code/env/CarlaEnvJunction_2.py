@@ -105,9 +105,12 @@ from srunner.util_development.util import coords_trans
 
 
 # from srunner.challenge.autoagents.RLagent_junction import RLAgent
-from srunner.challenge.autoagents.RLagent_lon import RLAgent
+# from srunner.challenge.autoagents.RLagent_lon import RLAgent
+from srunner.lyq_code.agent.RLagent_lon_2 import RLAgent  # newest version of agent
+
 # from srunner.challenge.algorithm.dqn import DQNAlgorithm
-from srunner.challenge.algorithm.dqn_lon import DQNAlgorithm
+# from srunner.challenge.algorithm.dqn_lon import DQNAlgorithm
+from srunner.lyq_code.algorithm.dqn_lon_2 import DQNAlgorithm
 
 number_class_translation = {
 
@@ -134,16 +137,6 @@ PENALTY_WRONG_WAY = 5
 PENALTY_SIDEWALK_INVASION = 5
 PENALTY_ROUTE_DEVIATION = 5
 PENALTY_STOP = 2
-
-# paras for drl training
-EPISODES = 1
-
-# default junction right turn scenario paras
-scenario_para_dict = {
-    'map': "Town03",
-    'start_point': np.array([53.0, 128.0, 1.0]),
-    # 'end_point': np.array([5.24, 92.28, 0]),
-}
 
 # parameters for scenario
 start_location = carla.Location(x=53.0, y=128.0, z=3.0)
@@ -183,51 +176,6 @@ def convert_json_to_transform(actor_dict):
                                                    z=float(actor_dict['z'])),
                            rotation=carla.Rotation(roll=0.0, pitch=0.0, yaw=float(actor_dict['yaw'])))
 
-def generate_route(vehicle, turn_flag=0, hop_resolution=1.0):
-    """
-        Generate a local route for vehicle to next intersection
-        todo: check if turn flag is unsuitable in next turn
-    :param vehicle: Vehicle need route
-    :param turn_flag: turn flag to
-    :param hop_resolution: Distance between each waypoint
-    :return: gps and coordinate route  generated
-    """
-
-    world = vehicle.get_world()
-    map = world.get_map()
-
-    # get initial location of ego_vehicle
-    start_waypoint = map.get_waypoint(vehicle.get_location())
-
-    # Using generate_target_waypoint to generate target waypoint
-    # ref on scenario_helper.py module
-    turn_flag = 0  # turn_flag by current scenario
-    end_waypoint = generate_target_waypoint(start_waypoint, turn_flag)
-
-    # generate a dense route according to current scenario
-    # Setting up global router
-    waypoints = [start_waypoint.transform.location, end_waypoint.transform.location]
-    # from srunner.challenge.utils.route_manipulation import interpolate_trajectory
-    gps_route, trajectory = interpolate_trajectory(world, waypoints, hop_resolution)
-
-def plot_route(world, trajectory):
-    """
-        Plot the complete route.
-    :return:
-    """
-    for item in trajectory:
-        transform = item[0]
-        scalar = 0.5
-        yaw = np.deg2rad(transform.rotation.yaw)
-        vector = scalar * np.array([np.cos(yaw), np.sin(yaw)])
-        start = transform.location
-        end = start + carla.Location(x=vector[0], y=vector[1], z=start.z)
-        # plot the waypoint
-        debug = world.debug
-        debug.draw_arrow(start, end, thickness=0.25, arrow_size=0.25, color=Red, life_time=9999)
-        debug.draw_point(start, size=0.05, color=green, life_time=9999)
-        world.tick()
-
 def get_rotation_matrix_2D(transform):
     """
         Get a 2D transform matrix of a specified transform
@@ -242,6 +190,16 @@ def get_rotation_matrix_2D(transform):
                                    [sy, cy]])
     return rotation_matrix_2D
 
+# paras for drl training
+EPISODES = 1
+
+# default junction right turn scenario paras
+scenario_para_dict = {
+    'map': "Town03",
+    'start_point': np.array([53.0, 128.0, 1.0]),
+    'end_point': np.array([5.24, 92.28, 1.0]),
+}
+
 
 class ScenarioEnv(object):
     """
@@ -251,11 +209,34 @@ class ScenarioEnv(object):
     SECONDS_GIVEN_PER_METERS = 0.25
     MAX_CONNECTION_ATTEMPTS = 5
 
+    # route info of ego vehicle
+    starting_location = carla.Location(x=53.0, y=128.0, z=0.0)
+    ending_location = carla.Location(x=5.24, y=92.28, z=1.0)
+
     def __init__(self, args):
 
-        # remaining simulation time available for this time in seconds
-        challenge_time_available = int(os.getenv('CHALLENGE_TIME_AVAILABLE', '1080000'))
-        self.challenge_time_available = challenge_time_available
+        host = 'localhost'
+        port = 2000
+        client_timeout = 2.0
+
+
+        self.client = carla.Client(host, port)
+        self.client.set_timeout(client_timeout)
+
+        town = 'Town03'
+
+        self.world = self.client.load_world(town)
+
+
+
+
+        self.map = self.world.get_map()
+
+
+
+
+
+
 
         self.track = args.track
 
@@ -280,11 +261,7 @@ class ScenarioEnv(object):
         self.background_scenario = None
         self.list_scenarios = []
 
-        # first we instantiate the Agent
-        if args.agent is not None:
-            module_name = os.path.basename(args.agent).split('.')[0]
-            sys.path.insert(0, os.path.dirname(args.agent))
-            self.module_agent = importlib.import_module(module_name)
+
         self._sensors_list = []
         self._hop_resolution = 2.0
         self.timestamp = None
@@ -292,7 +269,6 @@ class ScenarioEnv(object):
         # debugging parameters
         self.route_visible = self.debug > 0
 
-        self.map = args.map
 
         self.config = args.config
 
@@ -310,9 +286,7 @@ class ScenarioEnv(object):
         # Try to load the world and start recording
         # If not successful stop recording and continue with next iteration
 
-        self.load_world(self.client, self.map)
 
-        self.wmap = self.world.get_map()
         # get some necessary API
         # self.debug = self.world.debug
 
@@ -325,14 +299,6 @@ class ScenarioEnv(object):
         #  get route
         self.starting_point = args.starting
         self.ending_point = args.ending
-
-        self.starting_location = carla.Location(x=self.starting_point[0],
-                                                y=self.starting_point[1],
-                                                z=self.starting_point[2])
-
-        self.ending_location = carla.Location(x=self.ending_point[0],
-                                              y=self.ending_point[1],
-                                              z=self.ending_point[2])
 
         # route calculate
         # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
@@ -359,7 +325,7 @@ class ScenarioEnv(object):
         todo: add attributes to init
         :return: local
         """
-        start_waypoint = self.wmap.get_waypoint(self.starting_location)
+        start_waypoint = self.map.get_waypoint(self.starting_location)
         self.junction_origin = generate_target_waypoint(start_waypoint, turn_flag)  # carla.waypoint
         yaw = np.deg2rad(self.junction_origin.transform.rotation.yaw)
         [c_yaw, s_yaw] = [np.cos(yaw), np.sin(yaw)]
@@ -382,7 +348,7 @@ class ScenarioEnv(object):
         ego_velocity = np.array([ego_velocity.x, ego_velocity.y, ego_velocity.z])  # in global
         ego_velocity = np.matmul(self.transform_matrix, ego_velocity)  # in local frame
         ego_speed = np.linalg.norm(ego_velocity)
-        ego_velocity_norm = ego_velocity/ego_speed
+        ego_velocity_norm = ego_velocity / ego_speed
 
         # npc vehicle
         npc_location = self.npc_vehicle.get_location()
@@ -393,7 +359,7 @@ class ScenarioEnv(object):
         npc_velocity = np.array([npc_velocity.x, npc_velocity.y, npc_velocity.z])  # in global
         npc_velocity = np.matmul(self.transform_matrix, npc_velocity)  # in local frame
         npc_speed = np.linalg.norm(npc_velocity)
-        npc_velocity_norm = npc_velocity/npc_speed
+        npc_velocity_norm = npc_velocity / npc_speed
 
         # todo: normalization
         # maximum_distance =
@@ -437,36 +403,6 @@ class ScenarioEnv(object):
                 self.world.apply_settings(settings)
 
                 self.world = None
-
-    def set_npc_vehicle(self):
-        """
-        Consider only 1 npc vehicle.
-        :return:
-        """
-        self.npc_start_coord = np.array([6.0, 171.0, 1.0])
-
-        bp = self.world.get_blueprint_library().find("vehicle.tesla.model3")  # using model3 as npc vehicle
-        bp.set_attribute('role_name', 'npc')
-
-        # get npc location
-        # API: exact_location, waypoint, road_center_location
-        _, waypoint, road_center_location = coords_trans(self.wmap, self.npc_start_coord)
-        # get spawn transform
-        location = road_center_location
-        rotation = waypoint.transform.rotation
-        transform = carla.Transform(location, rotation)
-        # spawn npc
-        self.npc_vehicle = self.world.spawn_actor(bp, transform)
-        self.world.tick()
-
-        # self.set_spectator(transform)  # visualization
-
-        self.npc_vehicle.set_autopilot(True)
-        self.traffic_manager.collision_detection(self.npc_vehicle, self.ego_vehicle, False)  # collision detection
-        self.traffic_manager.ignore_lights_percentage(self.npc_vehicle, 100.0)  # traffic light violation
-
-        print("npc vehicle is set")
-
 
     def prepare_ego_car(self, start_transform):
         """
@@ -780,16 +716,6 @@ class ScenarioEnv(object):
 
         return list_of_actors
 
-    def load_world(self, client, town_name):
-
-        self.world = client.load_world(town_name)
-        self.timestamp = self.world.wait_for_tick(self.wait_for_world)
-        settings = self.world.get_settings()
-        settings.synchronous_mode = True
-        if self.rendering == False:
-            settings.no_rendering_mode = True
-        self.world.apply_settings(settings)
-
     def build_master_scenario(self, route, town_name, timeout=300):
         # We have to find the target.
         # we also have to convert the route to the expected format
@@ -953,43 +879,11 @@ class ScenarioEnv(object):
             height = 30
             transform = self.ego_vehicle.get_transform()
             location = carla.Location(0, 0, height) + transform.location
-            rotation = self.wmap.get_waypoint(transform.location).transform.rotation
+            rotation = self.map.get_waypoint(transform.location).transform.rotation
             rotation = carla.Rotation(yaw=rotation.yaw, pitch=-90)  # rotate to forward direction
 
         self.spectator.set_transform(carla.Transform(location, rotation))
         self.world.tick()
-
-    def valid_sensors_configuration(self, agent, track):
-
-        sensors = agent.sensors()
-
-        for sensor in sensors:
-            if agent.track == Track.ALL_SENSORS:
-                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder') or sensor['type'].startswith('sensor.hd_map'):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            elif agent.track == Track.CAMERAS:
-                if not (sensor['type'].startswith('sensor.camera.rgb') or sensor['type'].startswith(
-                        'sensor.other.gnss') or sensor['type'].startswith('sensor.can_bus')):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            elif agent.track == Track.ALL_SENSORS_HDMAP_WAYPOINTS:
-                if sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder'):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-            else:
-                if not (sensor['type'].startswith('sensor.scene_layout') or sensor['type'].startswith(
-                        'sensor.object_finder') or sensor['type'].startswith('sensor.other.gnss')
-                        or sensor['type'].startswith('sensor.can_bus')):
-                    return False, "Illegal sensor used for Track [{}]!".format(agent.track)
-
-            # let's check the extrinsics of the sensor
-            if 'x' in sensor and 'y' in sensor and 'z' in sensor:
-                if math.sqrt(sensor['x'] ** 2 + sensor['y'] ** 2 + sensor['z'] ** 2) > self.MAX_ALLOWED_RADIUS_SENSOR:
-                    return False, "Illegal sensor extrinsics used for Track [{}]!".format(agent.track)
-
-        return True, ""
 
     def worldReset(self, episode_index):
         """
@@ -1110,8 +1004,10 @@ class ScenarioEnv(object):
             self.ego_vehicle.apply_control(ego_action)
 
             # set spectator on vehicle
-            if self.spectator:
-                self.set_spectator_vehicle()
+            # if self.spectator:
+            #     self.set_spectator_vehicle()
+
+
 
             # set ego_vehicle on static view
             # overhead of local junction
@@ -1157,7 +1053,6 @@ class ScenarioEnv(object):
 
     def load_environment_and_run(self, args, world_annotations=''):
 
-        # correct_sensors, error_message = self.valid_sensors_configuration(self.agent_instance, self.track)
 
         # if not correct_sensors:
         # the sensor configuration is illegal
@@ -1168,7 +1063,7 @@ class ScenarioEnv(object):
         # train for EPISODES times
         for i in range(EPISODES):
             self.worldReset(i)
-            self.master_scenario = self.build_master_scenario(self.route, self.map, timeout=self.route_timeout)
+            self.master_scenario = self.build_master_scenario(self.route, self.map.name, timeout=self.route_timeout)
             # self.background_scenario = self.build_background_scenario(self.map, timeout=self.route_timeout)
             # self.traffself.load_environment_and_run(argsenarios_definitions = world_annotations[self.map][0]
             self.list_scenarios = [self.master_scenario]
@@ -1250,11 +1145,9 @@ if __name__ == '__main__':
     PARSER.add_argument('--port', default='2000', help='TCP port to listen to (default: 2000)')
     PARSER.add_argument("-a", "--agent", type=str, help="Path to Agent's py file to evaluate")
     PARSER.add_argument("--config", type=str, help="Path to Agent's configuration file", default=" ")
-    PARSER.add_argument("-m", "--map", type=str, help="Town name",
-                        default="Town03")
 
     PARSER.add_argument('--track', type=int, help='track type', default=4)
-    PARSER.add_argument('--rendering', type=bool, help='Switch rendering on?', default=True)
+
     PARSER.add_argument('--debug', type=int, help='Run with debug output', default=0)
 
     ARGUMENTS = PARSER.parse_args()
