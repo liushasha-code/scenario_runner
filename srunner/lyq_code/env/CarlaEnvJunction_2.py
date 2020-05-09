@@ -217,7 +217,7 @@ class ScenarioEnv(object):
 
         host = 'localhost'
         port = 2000
-        client_timeout = 2.0
+        client_timeout = 30.0
 
 
         self.client = carla.Client(host, port)
@@ -227,16 +227,22 @@ class ScenarioEnv(object):
 
         self.world = self.client.load_world(town)
 
+        # todo: package into method
 
+        sync_mode = True  # have to use sync mode
+        frame_rate = 25.0
+        no_render_mode = False
+        settings = self.world.get_settings()
+        # world settings parameters
+        settings.fixed_delta_seconds = 1.0 / frame_rate
+        settings.no_rendering_mode = no_render_mode
+        settings.synchronous_mode = sync_mode  # set world sync mode
+        self.world.apply_settings(settings)
 
+        # check settings
+        settings = self.world.get_settings()
 
         self.map = self.world.get_map()
-
-
-
-
-
-
 
         self.track = args.track
 
@@ -252,9 +258,7 @@ class ScenarioEnv(object):
         self.wait_for_world = 20.0  # in seconds
 
         # CARLA world and scenario handlers
-        self.world = None
         self.agent_instance = None
-
 
         # scenarios
         self.master_scenario = None
@@ -271,14 +275,6 @@ class ScenarioEnv(object):
 
 
         self.config = args.config
-
-
-
-        self.rendering = args.rendering
-
-        # setup world and client assuming that the CARLA server is up and running
-        self.client = carla.Client(args.host, int(args.port))
-        self.client.set_timeout(self.client_timeout)
 
         # For debugging
         self.route_visible = self.debug > 0
@@ -297,8 +293,8 @@ class ScenarioEnv(object):
 
 
         #  get route
-        self.starting_point = args.starting
-        self.ending_point = args.ending
+        # self.starting_point = args.starting
+        # self.ending_point = args.ending
 
         # route calculate
         # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
@@ -950,7 +946,11 @@ class ScenarioEnv(object):
         # ==================================================
 
         # set npc vehicle
-        self.set_npc_vehicle()
+        # self.set_npc_vehicle()
+
+
+        # set spectator
+        self.set_spectator()
 
     def run_route(self, trajectory, no_master=False):
 
@@ -972,6 +972,7 @@ class ScenarioEnv(object):
 
 
         while no_master or self.route_is_running():
+            self.timestamp = self.world.get_snapshot()
             # update all scenarios
             GameTime.on_carla_tick(self.timestamp)
             CarlaDataProvider.on_carla_tick()
@@ -979,6 +980,8 @@ class ScenarioEnv(object):
 
             # get geometry state for agent
 
+            # update traffic flow
+            self.trafficflow.run_step()
 
             # get action
             ego_action = self.agent_instance()

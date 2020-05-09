@@ -1,7 +1,7 @@
 """
 Some basic info of junction in Town03.
 
-todo: use class to package different junction info.
+todo: a better data structure, use class or dict?
 """
 
 import carla

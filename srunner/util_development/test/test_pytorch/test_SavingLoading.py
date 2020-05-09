@@ -64,15 +64,18 @@ print('\n', model.conv1.weight.size())
 print('\n', model.conv1.weight)
 
 print("------------------------------------")
-torch.save(model.state_dict(), './model_state_dict.pt')
+# torch.save(model.state_dict(), './model_state_dict.pt')
+
+path = '/home/lyq/RL_TrainingResult/'
+torch.save(model.state_dict(), path+'model_state_dict.pt')
 
 # ==================================================
 # test load dict when NN with different structure
-model_3 = modelclass_2()
+# model_3 = modelclass_2()
 
-model_3.load_state_dict(torch.load('./model_state_dict.pt'))
+# model_3.load_state_dict(torch.load('./model_state_dict.pt'))
 
-print('d')
+# print('d')
 # ==================================================
 
 

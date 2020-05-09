@@ -3,6 +3,10 @@ dqn_lon_2 is modified from dqn_lon.
 
 In developing: reconstruct some API
 
+log:
+2020.05.09
+fix state_dict saving path into a absolute path
+
 Reconstruct state representation for junction scenario.
 Action space is also modified.
 Only longitudinal control is considered.
@@ -32,25 +36,34 @@ except IndexError:
 import carla
 
 import math
+import numpy as np
+import datetime
+from collections import namedtuple
 import torch
 import torch.nn as nn
-import numpy as np
-from collections import namedtuple
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from tensorboardX import SummaryWriter
 
 seed = 1
 torch.manual_seed(seed)
 
+# date info, ie: '20200509'
+date = datetime.date.today().strftime('%Y%m%d')
+
+# use a absolute path for saving
+# save_dir = '/home/lyq/RL_TrainingResult/'+date+'/'  # consider date
+save_dir = '/home/lyq/RL_TrainingResult/'
+
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-name = 'longitudinal_control'
+given_name = 'sole_lon_control'
+
 
 class Net(nn.Module):
     """
-    Construct AC net of DQN.
+    NN for DQN.
     """
     width = 200  # width of FC network.
 
@@ -89,7 +102,6 @@ class Net(nn.Module):
 class DQNAlgorithm(object):
     """
         Fix state, using only ground truth info.
-
     """
 
     capacity = 800
@@ -234,39 +246,36 @@ class DQNAlgorithm(object):
             print("Memory Buff is too less")
 
     def save_net(self):
-        print('enter save')
-        # import pdb
-        # pdb.set_trace()
+        """
+        Save parametrs of the NN
 
-        # debug
-        state_dict = self.eval_net.state_dict()
-        actual_path = self.path + 'dqn.pth'
+        todo: add checkpoint
+        reference:
+        if not os.path.isdir("./models/checkpoint"):
+            os.mkdir("./models/checkpoint")
+        torch.save(checkpoint, './models/checkpoint/ckpt_best_%s.pth' % (str(epoch)))
 
-        # debug
-        # torch.save(self.eval_net.state_dict(), 'dqn.pth')
+        """
 
-        # path = "./DQN/DQN_training_test/"
+        # add tags for current parameters
+        # if given_name:
+        #     save_dir = save_dir + given_name + '/'
 
-        # try:
-        #     print("test path is: ", path+'dqn.pth')
-        #     torch.save(self.eval_net.state_dict(), path+'dqn.pth')
-        # except Exception as e:
-        #     print(type(e))
-        #     print("file save error")
-
-        # original
-        torch.save(self.eval_net.state_dict(), self.path + 'dqn.pth')
-
-        # try add name
-        # save_path = self.path + name + 'dqn.pth'
-        # torch.save(self.eval_net.state_dict(), save_path)
-
-        print('Net save is called.')
+        try:
+            torch.save(self.eval_net.state_dict(), save_dir+'dqn.pth')
+            print('Net is saved to ', save_dir+'dqn.pth')
+        except Exception as e:
+            print(type(e))
+            print("Net saving FAILS!")
 
     def load_net(self):
-        # import pdb
-        # pdb.set_trace()
-        self.eval_net.load_state_dict(torch.load(self.path + 'dqn.pth'))
-        self.target_net.load_state_dict(torch.load(self.path + 'dqn.pth'))
+        """
+        Load previous NN parameters.
+        """
+        try:
+            self.eval_net.load_state_dict(torch.load(save_dir + 'dqn.pth'))
+            self.target_net.load_state_dict(torch.load(save_dir + 'dqn.pth'))
+        except:
+            print("Net loading FAILS!")
 
 

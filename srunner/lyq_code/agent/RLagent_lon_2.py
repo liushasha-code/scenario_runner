@@ -99,11 +99,14 @@ class RLAgent:
         # image index???
         self.index = 0
 
-
+        # todo: remove Track info
+        # self.track = Track.CAMERAS
+        self.track = 0
 
         # ==================================================
         # Action space only consider longitudinal control
         self.acc_space = self.acc_space = [0.0, 0.5, 1.0]
+
         # todo: use a dense action space with number n
         self.action_shape = len(self.acc_space)
 
@@ -135,18 +138,6 @@ class RLAgent:
         # set lateral controller
         self.lateral_controller = None  # lateral controller will be set later by env script
         # self.set_lateral_controller()
-
-    def setup(self, path_to_conf_file):
-        """
-        Initialize everything needed by your agent and set the track attribute to the right type:
-            Track.ALL_SENSORS : LIDAR, cameras, GPS and speed sensor allowed
-            Track.CAMERAS : Only cameras and GPS allowed
-            Track.ALL_SENSORS_HDMAP_WAYPOINTS : All sensors and HD Map and waypoints allowed
-            Track.SCENE_LAYOUT : No sensors allowed, the agent receives a high-level representation of the scene.
-        """
-        self.track = Track.CAMERAS
-
-
 
     def set_lateral_controller(self, args_lateral=None):
         """
