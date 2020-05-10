@@ -1,5 +1,8 @@
 """
-Create a test env to test TrafficFlow module.
+test:
+1. methods of carla.Junction usage
+2. other self-defined methods
+
 """
 
 from __future__ import print_function
@@ -68,57 +71,86 @@ start_transform = carla.Transform(start_location, start_rotation)
 junction_center = carla.Location(x=-1.32, y=132.69, z=0.00)
 
 
-class TestTrafficFlow(BasicEnv):
-
+class TestJunctionUsage(BasicEnv):
+    """
+    Test usage of carla.Junction
+    """
     def __init__(self, town='Town03', host='localhost', port=2000, client_timeout=2.0):
-        super(TestTrafficFlow, self).__init__(town=town, host=host, port=port, client_timeout=client_timeout)
-        self.set_world(sync_mode=True, frame_rate=25.0, no_render_mode=False)
+        super(TestJunctionUsage, self).__init__(town=town, host=host, port=port, client_timeout=client_timeout)
+        self.set_world(sync_mode=False, frame_rate=25.0, no_render_mode=False)
         self.world.tick()
         print('sync mode: ', self.world.get_settings().synchronous_mode)
 
-        # instantiate TrafficFlow module
-        self.trafficflow = TrafficFlow(self.client, self.world)
+    @staticmethod
+    def get_front_junction(waypoint):
+        """
+        Get the junction in forward direction.
+        :param waypoint: The start waypoint of a route. carla.Location
+        :return: carla.Junction ahead current waypoint
+        """
+        sampling_radius = 1.0
+        while True:
+            wp_choice = waypoint.next(sampling_radius)
+            #   Choose path at intersection
+            if len(wp_choice) > 1:
+                if wp_choice[0].is_junction:
+                    junction = wp_choice[0].get_junction()
+                    break
+            else:
+                waypoint = wp_choice[0]
 
-        # actor in the test
-        self.ego_vehicle = None  # consider only 1 ego vehicle
-        self.npc_vehicles = []  # using list to manage npc vehicle
+        # set spectator on the junction
+        location = junction.bounding_box.location
+        rotation = start_rotation
+        transform = carla.Transform(location, rotation)
+        # self.set_spectator(transform, 30)
 
-        # route of ego vehicle
-        # self.route = None
+        # ==================================================
+        """
+        # test carla.Junction get_waypoints method
+        lane_type = wp_choice[0].lane_type
+        wp_pair_list = junction.get_waypoints(lane_type)  # not quite understand how this list work
+        # visualize wp_pair_list
+        for tp in wp_pair_list:
+            self.draw_waypoint(tp[0])
+            self.draw_waypoint(tp[1])
+        """
+        # ==================================================
 
-        # parameters for traffic flow
-        self.count = 0  # count spawned vehicle amount
-        self.straight_npc_list = []
-        self.last_spawn_time = 0
-        self.target_spawn_time = None
+        # print('testing get_junction method')
+        return junction
 
-    def run(self):
-
+    def init_scene(self):
+        """"""
         # set spectator on the junction
         self.set_spectator(carla.Transform(junction_center, start_rotation), view=1, h=100)
 
-        count = 0
-        while True:
+        start_waypoint = self.map.get_waypoint(start_location)
+        junction = self.get_front_junction(start_waypoint)
 
-            # call to run step
-            self.trafficflow()
+        bbox = junction.bounding_box
+        transform = carla.Transform()  # an empty transform will work
+        self.debug.draw_box(bbox, transform.rotation, 0.5, carla.Color(255, 0, 0, 0), 999)  # draw junction in red
 
-            # check status
-            npc_list = self.trafficflow.get_npc_list()
+    def get_waypoint_list(self):
+        """"""
+        get
 
-            if not count == self.trafficflow.count:
-                print('current npc number is: ', self.trafficflow.count)
-                count = self.trafficflow.count
+    def run(self):
+        self.init_scene()
 
-            # keep env running
-            self.world.tick()
+        # get
+
+
 
 
 def main():
     try:
         # create a env by instantiation
-        test = TestTrafficFlow()
+        test = TestJunctionUsage()
         test.run()
+
+        print('d')
 
     except:
         traceback.print_exc()
@@ -128,3 +160,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

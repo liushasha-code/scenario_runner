@@ -444,9 +444,9 @@ class ScenarioEnv(object):
 
     def calculate_route(self):
         """
-            Modified input format, using list to store coords now
-            This function calculate a route for giving starting_point and ending_point
-            :return: route (includeing Waypoint.transform & RoadOption)
+        Modified input format, using list to store coords now
+        This function calculate a route for giving starting_point and ending_point
+        :return: route (includeing Waypoint.transform & RoadOption)
         """
         # input args is a coarse route of carla.Location
         coarse_route = []

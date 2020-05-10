@@ -55,7 +55,9 @@ from srunner.challenge.utils.route_manipulation import interpolate_trajectory
 # from srunner.util_development.util import generate_route
 from srunner.util_development.carla_rgb_color import *
 from srunner.util_development.util_visualization import *
+from srunner.util_development.scenario_helper_modified import generate_target_waypoint
 from srunner.util_development.scenario_helper_modified import *
+
 
 class test_and_visualization():
     """
