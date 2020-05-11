@@ -983,6 +983,11 @@ class ScenarioEnv(object):
             # update traffic flow
             self.trafficflow.run_step()
 
+            # get npc vehicle state for ego vehicle
+            near_npc_dict = self.trafficflow.get_near_npc()
+
+            self.agent_instance.get_near_npc(near_npc_dict)  # get near npc vehicles from env
+
             # get action
             ego_action = self.agent_instance()
             # parse control action

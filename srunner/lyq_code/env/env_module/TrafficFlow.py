@@ -1,8 +1,11 @@
 """
+Modified from TrafficFlow.
+
+Adding methods to get npc vehicles for state representation.
+
 Modularization for RL training env.
 
 Parameters are designed for Junction scenario in Town03
-
 """
 
 from __future__ import print_function
@@ -88,7 +91,7 @@ class TrafficFlow:
             'target_spawn_time': None,
             'count': 0,
             'actor_list': [],
-            'nearby_npc': [],  # use queue to manage
+            'nearby_npc': [],  # npc vehicles which in the junction for state representation
         },
         'right': {
             'transform': carla.Transform(carla.Location(x=-6.268355, y=90.840492, z=0.000000),
@@ -109,6 +112,7 @@ class TrafficFlow:
             'nearby_npc': [],
         }
     }
+
     # ==================================================
 
     def __init__(self, client, world):
@@ -128,6 +132,19 @@ class TrafficFlow:
         self.npc_vehicles = []  # using list to manage npc vehicle
         self.count = 0  # total amount of spawned npc vehicles
         self.ego_vehicle = None  # ego vehicle in env
+
+        # get current junction
+        self.get_junction_easy()
+
+    def get_junction_easy(self):
+        """
+        A easy version to get junction in Town 03.
+
+        todo: remove this method with a complete version
+        i.e.  add method: get_junction, to get a junction from env
+        """
+        junction_waypoint = self.map.get_waypoint(junction_center)
+        self.junction = junction_waypoint.get_junction()
 
     def get_npc_list(self):
         """
@@ -295,7 +312,7 @@ class TrafficFlow:
                 print("This vehicle will avoid collision with ego vehicle.")
             self.traffic_manager.collision_detection(vehicle, self.ego_vehicle, collision_detection_flag)
 
-    def spawn_npc(self, transform, name=None, p=None):
+    def spawn_npc(self, transform, name=None):
         """
         Spawn a npc vehicle in a certain transform
         :return:
@@ -311,12 +328,6 @@ class TrafficFlow:
         vehicle = self.world.spawn_actor(bp, transform)  # use spawn method
         self.world.tick()
         print("Number", vehicle.id, "npc vehicle is spawned.")  # actor id number of this vehicle
-        # set autopilot for ego vehicle
-        if not p:
-            p_collision = 0.9
-        else:
-            p_collision = p
-        self.set_autopilot(vehicle, p_collision)
 
         return vehicle
 
@@ -423,7 +434,7 @@ class TrafficFlow:
                         if actor_id == actor.id:
                             self.npc_info[key]['actor_list'].remove(actor)
                 print("vehicle", actor_id, "is deleted")
-        
+
         delete_list.clear()        
         """
         # ==================================================
@@ -472,6 +483,9 @@ class TrafficFlow:
                 name = key + str(self.npc_info[key]['count'] + 1)  # name of the actor to be spawned
                 try:
                     vehicle = self.spawn_npc(transform, name)
+                    # set autopilot for ego vehicle
+                    p_collision = 0.5  # probability of NOT avoiding collision with ego vehicle
+                    self.set_autopilot(vehicle, p_collision)
                     self.npc_vehicles.append(vehicle)  # add to npc vehicles list
                     self.npc_info[key]['actor_list'].append(vehicle)  # only store id
                     self.npc_info[key]['count'] += 1
@@ -488,6 +502,48 @@ class TrafficFlow:
 
             # print('testing spawn traffic flow')
 
+    @staticmethod
+    def junction_contains(location, bbox):
+        """
+        Check if a location is contained in a junction bounding box.
+
+        todo: consider a rotated junction, with a yaw angle
+
+        :param location: location point to check
+        :param bbox: junction bounding box(carla.BoundingBox)
+        :return: bool
+        """
+
+        vector = location - bbox.location  # location relative to junction center
+        extent = bbox.extent
+
+        if extent.x >= vector.x >= -extent.x and \
+                extent.y >= vector.y >= -extent.y:
+            return True
+        else:
+            return False
+
+    def get_near_npc(self):
+        """
+        Get near npc vehicles for state representation.
+
+        Updated when calling
+        """
+        near_npc_dict = {
+            'left': [],
+            'right': [],
+            'straight': [],
+        }
+
+        for key in self.npc_info:
+            for actor in self.npc_info[key]['actor_list']:
+                # check if vehicle is in the junction
+                if self.junction_contains(actor.get_location(), self.junction.bounding_box):
+                    # self.npc_info[key]['nearby_npc'].append(actor)
+                    near_npc_dict[key].append(actor)
+
+        return near_npc_dict
+
     def __call__(self):
         """"""
         self.run_step()
@@ -498,5 +554,3 @@ class TrafficFlow:
         self.spawn_all_traffic_flow()
         # check and delete npc vehicles
         self.delete_npc()
-
-

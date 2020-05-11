@@ -139,6 +139,9 @@ class RLAgent:
         self.lateral_controller = None  # lateral controller will be set later by env script
         # self.set_lateral_controller()
 
+        # near npc vehicle state
+        self.near_npc_dict = None
+
     def set_lateral_controller(self, args_lateral=None):
         """
         Set controller for the ego vehicle
@@ -267,6 +270,18 @@ class RLAgent:
         print('local direction updated.')
         return last_waypoint_location, next_waypoint_location
 
+    def __call__(self):
+        timestamp = GameTime.get_time()
+        wallclock = GameTime.get_wallclocktime()
+        print('======[Agent] Wallclock_time = {} / Sim_time = {}'.format(wallclock, timestamp))
+
+        # control = self.run_step(self.state)
+
+        control = self.run_step()
+
+        control.manual_gear_shift = False
+        return control
+
     def run_step(self, state=None):
         """
         Execute one step of navigation.
@@ -344,6 +359,42 @@ class RLAgent:
         #     print("need to check")
         # ==================================================
 
+        #
+        # get npc vehicle state into state dict
+        for key in self.near_npc_dict:
+            if self.near_npc_dict[key]:
+                npc = self.near_npc_dict[key][0]
+
+                # todo: package into method
+                trans = npc.get_transform()
+
+                x = npc.get_transform().location.x
+                y = npc.get_transform().location.y
+                yaw = npc.get_transform().rotation.yaw
+
+                # normalization parameter
+                R = 18.0
+
+                # normalization
+                x = x/R
+                y = y/R
+                yaw = np.deg2rad(yaw)
+                npc_state = [x, y, yaw]
+
+            else:
+                if key == 'staraight':
+                    yaw =
+                npc_state = [1, 1, ]
+
+         =
+        left
+        right =
+
+        # get near npc state to
+
+
+
+
         if self.state is None:
             self.state = {'state_1': lon_diatance, 'state_2': lat_diatance, 'state_3': lat_offset,
                           'state_4': diversion_angle}
@@ -419,6 +470,10 @@ class RLAgent:
 
         return control
 
+    def get_near_npc(self, near_npc_dict):
+        """"""
+        self.near_npc_dict = near_npc_dict
+
     def get_state(self):
         # args of this method has changed
 
@@ -460,18 +515,6 @@ class RLAgent:
         :return:
         """
         pass
-
-    def __call__(self):
-        timestamp = GameTime.get_time()
-        wallclock = GameTime.get_wallclocktime()
-        print('======[Agent] Wallclock_time = {} / Sim_time = {}'.format(wallclock, timestamp))
-
-        # control = self.run_step(self.state)
-
-        control = self.run_step()
-
-        control.manual_gear_shift = False
-        return control
 
     def all_sensors_ready(self):
         return self.sensor_interface.all_sensors_ready()

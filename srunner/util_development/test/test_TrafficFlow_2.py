@@ -106,9 +106,20 @@ class TestTrafficFlow(BasicEnv):
             # check status
             npc_list = self.trafficflow.get_npc_list()
 
+            # print npc amount when new npc spawned
             if not count == self.trafficflow.count:
                 print('current npc number is: ', self.trafficflow.count)
                 count = self.trafficflow.count
+
+            # get near npc
+            near_npc_dict = self.trafficflow.get_near_npc()
+
+            # check if getting near npc correctly
+            for key in near_npc_dict:
+                # if near_npc_dict[key]:
+
+                if len(near_npc_dict[key]) == 2:
+                    print('d')
 
             # keep env running
             self.world.tick()
