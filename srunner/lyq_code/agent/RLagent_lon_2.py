@@ -94,6 +94,9 @@ class RLAgent:
         self.steer_space = [-1.0, -0.5, 0.0, 0.5, 1.0]
         self.acc_space = [0.0, 0.5, 1.0]
 
+        # action space:[accelerate, maintain, decelerate]
+        self.action_space = [[1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
+
         # generate action space
         # self.generate_action_space()
         # image index???
@@ -160,6 +163,16 @@ class RLAgent:
             args_lateral = args_lateral_dict
 
         self.lateral_controller = PIDLateralController(self.ego_vehicle, **args_lateral)
+
+    def set_lon_controller(self):
+        """
+        Set a PID controller for longitudinal control.
+
+        todo: finish this method
+        """
+
+        # self.lon_controller =
+        pass
 
     def sensors(self):
         """
@@ -295,6 +308,17 @@ class RLAgent:
         control.hand_brake = False
         # ==================================================
 
+
+
+
+        # get state of ego vehicle
+        state = []
+
+
+
+
+
+
         # get info about ego vehicle
 
         # buffer waypoints and get 2 nearest waypoints
@@ -312,6 +336,7 @@ class RLAgent:
             print("debug")
 
         if diversion_angle > 0.44:
+
             print("debug")
 
         # get state about navigation(target waypoint)
@@ -361,6 +386,13 @@ class RLAgent:
 
         #
         # get npc vehicle state into state dict
+        near_npc_state = []
+        near_npc_state_dict = {
+            'left': [],
+            'right': [],
+            'staraight': [],
+        }
+
         for key in self.near_npc_dict:
             if self.near_npc_dict[key]:
                 npc = self.near_npc_dict[key][0]
@@ -383,17 +415,23 @@ class RLAgent:
 
             else:
                 if key == 'staraight':
-                    yaw =
-                npc_state = [1, 1, ]
+                    yaw = 0
 
-         =
-        left
-        right =
+                elif key == 'left':
+                    yaw = 270
+                elif key == 'right':
+                    yaw = 90
 
-        # get near npc state to
+                npc_state = [1, 1, yaw]
 
+            near_npc_state_dict[key] = npc_state
 
+        # package state into dict
+        near_npc_state.append(near_npc_state_dict['left'])
+        near_npc_state.append(near_npc_state_dict['straight'])
+        near_npc_state.append(near_npc_state_dict['right'])
 
+        print('near_npc_state', near_npc_state)
 
         if self.state is None:
             self.state = {'state_1': lon_diatance, 'state_2': lat_diatance, 'state_3': lat_offset,
@@ -470,11 +508,54 @@ class RLAgent:
 
         return control
 
+    def get_control(self):
+        """
+        Get control of ego vehicle.
+        :return: control
+        """
+
+        control = carla.VehicleControl()
+        control.steer = 0.0
+        control.throttle = 0.0
+        control.brake = 0.0
+        control.hand_brake = False
+        # print value
+        # todo: add debug flag if print all parameters
+        print('throttle:', control.throttle)
+        print('steer:', control.steer)
+
+
+        return control
+
+    def get_action(self, action_index):
+        """
+        Get longitudinal control command from RL module.
+        """
+        throttle = self.action_space[action_index][0]
+        brake = self.action_space[action_index][1]
+        return throttle, brake
+
+
     def get_near_npc(self, near_npc_dict):
-        """"""
+        """
+        Get
+        """
         self.near_npc_dict = near_npc_dict
 
     def get_state(self):
+        """
+        Get complete state for RL module.
+
+        """
+
+
+        # ego vehicle info
+
+        # npc vehicle info
+
+
+
+
         # args of this method has changed
 
         # ==================================================

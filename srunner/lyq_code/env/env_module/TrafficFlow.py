@@ -81,6 +81,10 @@ class TrafficFlow:
 
     """
 
+    # parameters
+    lower_limit = 1.0
+    upper_limit = 10.0
+
     # ==================================================
     # dict to record npc vehicle info
     npc_info = {
@@ -336,10 +340,7 @@ class TrafficFlow:
         Time interval till next vehicle spawning in seconds.
         :return: time_interval, float
         """
-        # parameters
-        lower_limit = 1.0
-        upper_limit = 8.0
-        time_interval = random.uniform(lower_limit, upper_limit)
+        time_interval = random.uniform(self.lower_limit, self.upper_limit)
 
         return time_interval
 

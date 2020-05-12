@@ -118,8 +118,8 @@ class TestTrafficFlow(BasicEnv):
             for key in near_npc_dict:
                 # if near_npc_dict[key]:
 
-                if len(near_npc_dict[key]) == 2:
-                    print('d')
+                if len(near_npc_dict[key]) >= 1:
+                    print(key, 'near npc', len(near_npc_dict[key]))
 
             # keep env running
             self.world.tick()
