@@ -69,51 +69,35 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class RLAgent:
     """
     Package methods of getting state and reward in RL training.
-
     """
     def __init__(self, world, episode_index):
 
-
-        # RLagent net
+        self.world = None  # need to manually set world
+        self.ego_vehicle = None
         self.algorithm = None
         # current global plans to reach a destination
         self._global_plan = None
-
         # this data structure will contain all sensor data
         self.sensor_interface = SensorInterface()
 
+        self.action = None
         self.state = None
         self.next_state = None
         self.reward = None
 
-        # original input and action space for RL
-        # self.image_shape = (3, 300, 200)
-        self.action_space = []
-        self.action_shape = None
-        # self.steer_space = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
-        self.steer_space = [-1.0, -0.5, 0.0, 0.5, 1.0]
-        self.acc_space = [0.0, 0.5, 1.0]
-
         # action space:[accelerate, maintain, decelerate]
         self.action_space = [[1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
+        self.action_dim = len(self.action_space)
 
-        # generate action space
-        # self.generate_action_space()
+        # todo: calculate state dimension automaticlly
+        self.state_dim = 20
+
         # image index???
         self.index = 0
 
         # todo: remove Track info
         # self.track = Track.CAMERAS
         self.track = 0
-
-        # ==================================================
-        # Action space only consider longitudinal control
-        self.acc_space = self.acc_space = [0.0, 0.5, 1.0]
-
-        # todo: use a dense action space with number n
-        self.action_shape = len(self.acc_space)
-
-        self.get_action_space2()
 
         # ==================================================
 
@@ -145,6 +129,40 @@ class RLAgent:
         # near npc vehicle state
         self.near_npc_dict = None
 
+    # ==================================================
+    # interaction API
+    # setters
+    def set_algorithm(self, algorithm):
+        self.algorithm = algorithm
+
+    def set_ego_vehicle(self, ego_vehicle):
+        """
+        Get ego vehicle from env.
+        """
+        self.ego_vehicle = ego_vehicle
+
+    def set_world(self, world):
+        self.world = world
+
+    # getters
+    def get_state_dim(self):
+        return self.state_dim
+
+    def get_action_dim(self):
+        return self.action_dim
+
+    def get_reward(self, reward):
+        self.reward = reward
+        print('reward:', self.reward)
+
+    def get_near_npc(self, near_npc_dict):
+        """
+        Get dict contains near npc info from env.
+        Structure of dict is contained in TrafficFlow module.
+        """
+        self.near_npc_dict = near_npc_dict
+
+    # function module
     def set_lateral_controller(self, args_lateral=None):
         """
         Set controller for the ego vehicle
@@ -170,14 +188,15 @@ class RLAgent:
 
         todo: finish this method
         """
-
         # self.lon_controller =
         pass
+
+    def all_sensors_ready(self):
+        return self.sensor_interface.all_sensors_ready()
 
     def sensors(self):
         """
         Define the sensor suite required by the agent
-
         """
         sensors = [
             # {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.0, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
@@ -186,22 +205,6 @@ class RLAgent:
             #  'width': 300, 'height': 200, 'fov': 100, 'id': 'Sem'}
         ]
         return sensors
-
-    def generate_action_space(self):
-        """
-        根据steer_num和acc_num划分离散动作空间
-        :return:
-        """
-        for item in product(self.steer_space, self.acc_space):
-            self.action_space.append(item)
-        self.action_shape = len(self.action_space)
-
-    def get_action_space2(self):
-        """
-        Get action space of only longitudinal action.
-        """
-        self.action_space = self.acc_space
-        self.action_shape = len(self.action_space)
 
     def buffer_waypoint(self):
         """
@@ -283,322 +286,12 @@ class RLAgent:
         print('local direction updated.')
         return last_waypoint_location, next_waypoint_location
 
-    def __call__(self):
-        timestamp = GameTime.get_time()
-        wallclock = GameTime.get_wallclocktime()
-        print('======[Agent] Wallclock_time = {} / Sim_time = {}'.format(wallclock, timestamp))
-
-        # control = self.run_step(self.state)
-
-        control = self.run_step()
-
-        control.manual_gear_shift = False
-        return control
-
-    def run_step(self, state=None):
-        """
-        Execute one step of navigation.
-        :return: control
-        """
-        # set to zero
-        control = carla.VehicleControl()
-        control.steer = 0.0
-        control.throttle = 0.0
-        control.brake = 0.0
-        control.hand_brake = False
-        # ==================================================
-
-
-
-
-        # get state of ego vehicle
-        state = []
-
-
-
-
-
-
-        # get info about ego vehicle
-
-        # buffer waypoints and get 2 nearest waypoints
-        last_waypoint_location, next_waypoint_location = self.buffer_waypoint()
-
-        # calculate state for RL
-        ego_transform = self.ego_vehicle.get_transform()
-        lat_offset, diversion_angle = self.get_local_geometry_state(ego_transform,
-                                                                    last_waypoint_location, next_waypoint_location)
-        print("lat_offset: ", lat_offset)
-        print("diversion_angle", diversion_angle)
-
-        # debug
-        if lat_offset > 0.95:
-            print("debug")
-
-        if diversion_angle > 0.44:
-
-            print("debug")
-
-        # get state about navigation(target waypoint)
-        # todo: this should be master_scenario_state in future version
-        # vector to target waypoint in local frame
-        lon_diatance, lat_diatance = self.get_navigation_state()
-
-        print("lon_diatance: ", lon_diatance)
-        print("lat_diatance: ", lat_diatance)
-
-        # todo: add state, velocity projection on local direction
-        # lon_vel_nav, lat_vel_nav = self.get_velo_nav()
-
-        # print to debug
-        print("lat_offset: ", lat_offset)
-        print("diversion_angle: ", diversion_angle)
-        print("lon_diatance: ", lon_diatance)
-        print("lat_diatance: ", lat_diatance)
-
-        # stack all state into state_dict
-        # state_list = [lon_diatance, lat_diatance, lat_offset, diversion_angle]
-        # state_dict = {"lon_diatance": lon_diatance,
-        #               "lat_diatance": lat_diatance,
-        #               "lat_offset": lat_offset,
-        #               "diversion_angle": diversion_angle
-        #               }
-        # state_dict = {"state_1": lon_diatance,
-        #               "state_2": lat_diatance,
-        #               "state_3": lat_offset,
-        #               "state_4": diversion_angle
-        #               }
-        # print("All state extracted.")
-
-        # utilize stored state
-        # transform state into tensor
-        # state_tensor = []
-        # for state in state_list:  # state stored in list
-        #     tensor = torch.tensor([state])
-        #     tensor = tensor.unsqueeze(0)
-        #     state_tensor.append(tensor)
-
-        # ==================================================
-        # try to catch a bug
-        # if diversion_angle >= 50:
-        #     print("need to check")
-        # ==================================================
-
-        #
-        # get npc vehicle state into state dict
-        near_npc_state = []
-        near_npc_state_dict = {
-            'left': [],
-            'right': [],
-            'staraight': [],
-        }
-
-        for key in self.near_npc_dict:
-            if self.near_npc_dict[key]:
-                npc = self.near_npc_dict[key][0]
-
-                # todo: package into method
-                trans = npc.get_transform()
-
-                x = npc.get_transform().location.x
-                y = npc.get_transform().location.y
-                yaw = npc.get_transform().rotation.yaw
-
-                # normalization parameter
-                R = 18.0
-
-                # normalization
-                x = x/R
-                y = y/R
-                yaw = np.deg2rad(yaw)
-                npc_state = [x, y, yaw]
-
-            else:
-                if key == 'staraight':
-                    yaw = 0
-
-                elif key == 'left':
-                    yaw = 270
-                elif key == 'right':
-                    yaw = 90
-
-                npc_state = [1, 1, yaw]
-
-            near_npc_state_dict[key] = npc_state
-
-        # package state into dict
-        near_npc_state.append(near_npc_state_dict['left'])
-        near_npc_state.append(near_npc_state_dict['straight'])
-        near_npc_state.append(near_npc_state_dict['right'])
-
-        print('near_npc_state', near_npc_state)
-
-        if self.state is None:
-            self.state = {'state_1': lon_diatance, 'state_2': lat_diatance, 'state_3': lat_offset,
-                          'state_4': diversion_angle}
-        else:
-            self.next_state = {'state_1': lon_diatance, 'state_2': lat_diatance, 'state_3': lat_offset,
-                               'state_4': diversion_angle}
-            transition = Transition(self.state, self.action, self.reward, self.next_state)
-            self.algorithm.store_transition(transition)
-            self.state = self.next_state
-
-        state_1 = self.state['state_1']
-        state_1_tensor = torch.tensor([state_1])
-        state_1_tensor = state_1_tensor.unsqueeze(0)
-
-        state_2 = self.state['state_2']
-        state_2_tensor = torch.tensor([state_2])
-        state_2_tensor = state_2_tensor.unsqueeze(0)
-
-        state_3 = self.state['state_3']
-        state_3_tensor = torch.tensor([state_3])
-        state_3_tensor = state_3_tensor.unsqueeze(0)
-
-        state_4 = self.state['state_4']
-        state_4_tensor = torch.tensor([state_4])
-        state_4_tensor = state_4_tensor.unsqueeze(0)
-
-        state_list = [state_1, state_2]  # float
-
-        state_list_tensor = []
-        for state in state_list:
-            state = torch.tensor([state])
-            state = state.unsqueeze(0)
-            state_list_tensor.append(state)
-
-        # get action from RL module
-        action_index = self.algorithm.select_action(state_list_tensor[0], state_list_tensor[1], state_3_tensor,
-                                                    state_4_tensor)  # get sparse action index
-
-        # print("action_index: ", action_index)  # print selected action index
-
-        # get next transform in buffer as target waypoint
-        # format is carla.transform
-        target_waypoint_trans = self._waypoint_buffer[0][0]
-
-        # get lateral control by run step controller
-        steering = self.lateral_controller.run_step(target_waypoint_trans)
-
-        # # todo: figure out if index>=15
-        # # action space bug
-        # if action_index == 15:
-        #     print("action space error")
-
-        # get corresponding actual action
-        self.action = action_index  # keep this to update RL
-
-        # control.steer = self.action_space[action_index][0]  # to be fixed
-        # acc = self.action_space[action_index][1]
-
-        acc = self.action_space[action_index]
-
-        control.throttle = self.action_space[action_index]
-        control.steer = steering
-
-        # if acc >= 0.0:
-        #     control.throttle = acc
-        #     control.brake = 0.0
-        # else:
-        #     control.throttle = 0.0
-        #     control.brake = abs(acc)
-        # control.throttle = acc
-        print('throttle:', control.throttle)
-        print('steer:', control.steer)
-
-        return control
-
-    def get_control(self):
-        """
-        Get control of ego vehicle.
-        :return: control
-        """
-
-        control = carla.VehicleControl()
-        control.steer = 0.0
-        control.throttle = 0.0
-        control.brake = 0.0
-        control.hand_brake = False
-        # print value
-        # todo: add debug flag if print all parameters
-        print('throttle:', control.throttle)
-        print('steer:', control.steer)
-
-
-        return control
-
-    def get_action(self, action_index):
-        """
-        Get longitudinal control command from RL module.
-        """
-        throttle = self.action_space[action_index][0]
-        brake = self.action_space[action_index][1]
-        return throttle, brake
-
-
-    def get_near_npc(self, near_npc_dict):
-        """
-        Get
-        """
-        self.near_npc_dict = near_npc_dict
-
-    def get_state(self):
-        """
-        Get complete state for RL module.
-
-        """
-
-
-        # ego vehicle info
-
-        # npc vehicle info
-
-
-
-
-        # args of this method has changed
-
-        # ==================================================
-        """
-        # camera sensor data
-        sensor_data = self.sensor_interface.get_data()
-        # process image
-        image_input = sensor_data['Mid']
-        bgr_image = image_input[1][:, :, :3]
-
-        # 注释掉此段，此段用来收集和处理语义分割图像，与现有挑战赛框架不符
-        # semcamera = sensor_data['Sem']
-        # sem_image = semcamera[1][:,:,:3]
-        # self.save_image(50,'sem',sem_image)
-
-        bgr_image = bgr_image[:, :, ::-1]
-        self.save_image(50, 'rgb', bgr_image)
-
-        bgr_image = bgr_image.astype(np.float32)
-        bgr_image = np.multiply(bgr_image, 1.0 / 255.0)
-        bgr_image = np.transpose(bgr_image, (2, 1, 0))
-
-        self.index += 1
-
-        if self.state is None:
-            self.state = {'image': bgr_image, 'speedx': speedx, 'speedy': speedy, 'steer': steer}
-        else:
-            self.next_state = {'image': bgr_image, 'speedx': speedx, 'speedy': speedy, 'steer': steer}
-            transition = Transition(self.state, self.action, self.reward, self.next_state)
-            self.algorithm.store_transition(transition)
-            self.state = self.next_state
-        """
-        pass
-
     def destroy(self):
         """
         Destroy (clean-up) the agent
         :return:
         """
         pass
-
-    def all_sensors_ready(self):
-        return self.sensor_interface.all_sensors_ready()
 
     def set_global_plan(self, global_plan_gps, global_plan_world_coord):
         """
@@ -626,41 +319,6 @@ class RLAgent:
             self._waypoints_queue.append(elem)
 
         # print('debug global route')
-
-    def get_image_shape(self):
-        return self.image_shape
-
-    def get_state_shape(self):
-        """
-
-        :return:
-        """
-        return self.state_shape
-
-    def get_action_shape(self):
-        return self.action_shape
-
-    def set_algorithm(self, algorithm):
-        self.algorithm = algorithm
-
-    def set_ego_vehicle(self, ego_vehicle):
-        """
-        Set ego vehicle from env.
-        """
-        self.ego_vehicle = ego_vehicle
-
-    def set_world(self, world):
-        self.world = world
-
-    def get_reward(self, reward):
-        self.reward = reward
-        print('reward:', self.reward)
-
-    def save_image(self, interval, path, image):
-        if self.index % interval == 0:
-            im = Image.fromarray(image)
-            # im.save('/home/guoyoutian/scenario_runner-0.9.5/DQN/image/'+ path + '/' +str(self.episode_index) + '_%03d.jpeg' %(self.index/interval))
-            print("image")
 
     def get_navigation_state(self):
         """
@@ -809,3 +467,168 @@ class RLAgent:
                          life_time=3)
 
         return lat_offset, diversion_angle
+
+    def get_state(self):
+        """
+        Get state for RL module.
+        State consists of ego state and npc state.
+        """
+        # ego vehicle
+        transform = self.ego_vehicle.get_transform()
+        loc = [transform.location.x, transform.location.y, transform.rotation.yaw]
+        velo = [self.ego_vehicle.get_velocity().x, self.ego_vehicle.get_velocity().y]
+        ego_state = loc + velo
+
+        # npc vehicle
+        npc_state = {
+            'left': [],
+            'right': [],
+            'straight': [],
+        }
+
+        for key in self.near_npc_dict:
+            if self.near_npc_dict[key]:
+                npc = self.near_npc_dict[key][0]
+
+                loc = [npc.get_transform().location.x, npc.get_transform().location.y]
+                rot = [npc.get_transform().rotation.yaw]
+                velo = [npc.get_velocity().x, npc.get_velocity().y]
+
+                # todo: normalization
+                # norm_para = [18.0, 1.0, 30]  # meter, degrees, m/s
+                # loc = loc / norm_para[0]
+                # rot = rot / norm_para[1]
+                # velo = velo / norm_para[2]
+
+                state = loc + rot + velo
+
+            else:
+                # todo: this criterias needs to modified if scenario changes
+                if key == 'left':
+                    state = [5.76, 175.50] + [270.0] + [0.0, -5.0]
+                elif key == 'straight':
+                    state = [-6.26, 90.84] + [0.0] + [5.0, 0.0]
+                elif key == 'right':
+                    state = [-46.92, 135.03] + [90.0] + [0.0, 5.0]
+
+            npc_state[key] = state
+
+        print('NPC state', npc_state)
+        # complete state
+        state = ego_state + npc_state['left'] + npc_state['straight'] + npc_state['right']
+
+        return state
+
+    def __call__(self):
+        timestamp = GameTime.get_time()
+        wallclock = GameTime.get_wallclocktime()
+        print('======[Agent] Wallclock_time = {} / Sim_time = {}'.format(wallclock, timestamp))
+
+        # if using input
+        # control = self.run_step(self.state)
+
+        control = self.run_step()
+        control.manual_gear_shift = False
+
+        return control
+
+    def run_step(self, state=None):
+        """
+        Execute one step of vehicle action.
+        :return: control command of ego vehicle (carla.VehicleControl)
+        """
+
+        # ==================================================
+        # todo: package previous method into method
+        # get info about ego vehicle
+
+        # buffer waypoints and get 2 nearest waypoints
+        last_waypoint_location, next_waypoint_location = self.buffer_waypoint()
+
+        # calculate state for RL
+        ego_transform = self.ego_vehicle.get_transform()
+        lat_offset, diversion_angle = self.get_local_geometry_state(ego_transform,
+                                                                    last_waypoint_location, next_waypoint_location)
+        print("lat_offset: ", lat_offset)
+        print("diversion_angle", diversion_angle)
+
+        # get state about navigation(target waypoint)
+        # todo: this should be master_scenario_state in future version
+        # vector to target waypoint in local frame
+        lon_diatance, lat_diatance = self.get_navigation_state()
+
+        print("lon_diatance: ", lon_diatance)
+        print("lat_diatance: ", lat_diatance)
+
+        # todo: add state, velocity projection on local direction
+        # lon_vel_nav, lat_vel_nav = self.get_velo_nav()
+
+        # print to debug
+        print("lat_offset: ", lat_offset)
+        print("diversion_angle: ", diversion_angle)
+        print("lon_diatance: ", lon_diatance)
+        print("lat_diatance: ", lat_diatance)
+
+        # stack all state into state_dict
+        # state_list = [lon_diatance, lat_diatance, lat_offset, diversion_angle]
+        # state_dict = {"lon_diatance": lon_diatance,
+        #               "lat_diatance": lat_diatance,
+        #               "lat_offset": lat_offset,
+        #               "diversion_angle": diversion_angle
+        #               }
+        # state_dict = {"state_1": lon_diatance,
+        #               "state_2": lat_diatance,
+        #               "state_3": lat_offset,
+        #               "state_4": diversion_angle
+        #               }
+        # print("All state extracted.")
+
+        # utilize stored state
+        # transform state into tensor
+        # state_tensor = []
+        # for state in state_list:  # state stored in list
+        #     tensor = torch.tensor([state])
+        #     tensor = tensor.unsqueeze(0)
+        #     state_tensor.append(tensor)
+
+        # ==================================================
+        # try to catch a bug
+        # if diversion_angle >= 50:
+        #     print("need to check")
+        # ==================================================
+
+        # get lateral control action
+        steering = self.lateral_controller.run_step(self._waypoint_buffer[0][0])  # carla.transform
+
+        # get longitudinal control from RL
+        state = self.get_state()
+
+        if self.state is None:
+            self.state = state
+        else:
+            self.next_state = state
+            transition = Transition(self.state, self.action, self.reward, self.next_state)
+            self.algorithm.store_transition(transition)
+            self.state = self.next_state
+
+        state_tensor = []
+        for item in state:
+            item = torch.tensor([item])
+            item = item.unsqueeze(0)
+            state_tensor.append(item)
+
+        # get action from RL module
+        self.action = self.algorithm.select_action(state_tensor)
+        # print("action_index: ", action_index)
+
+        control = carla.VehicleControl()
+        control.steer = steering
+        control.throttle = self.action_space[self.action][0]
+        control.brake = self.action_space[self.action][1]
+        control.hand_brake = False
+
+        print('throttle:', control.throttle)
+        print('steer:', control.steer)
+
+        return control
+

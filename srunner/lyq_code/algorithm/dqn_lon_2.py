@@ -85,18 +85,15 @@ class Net(nn.Module):
         )
         print("Net initialized")
 
-    def forward(self, state_1, state_2, state_3, state_4):
-    # def forward(self, state_tensor_list):
+    def forward(self, state_tensor):
+        """
+        Forward propagation of NN.
+        """
+        input_tensor = state_tensor[0]
+        for item in state_tensor[1:]:
+            input_tensor = torch.cat((input_tensor, item), 1)
 
-        # state_assign = []
-        # for tensor in state_tensor_list:
-        #     tensor = tensor.to(device)
-        #     state_assign.append(tensor)
-
-        torch_cat_result = torch.cat((state_1, state_2, state_3, state_4), 1)
-
-        input_tensor = torch.cat((state_1, state_2, state_3, state_4), 1).to(device)
-        return self.fc(input_tensor)
+        return self.fc(input_tensor.to(device))
 
 
 class DQNAlgorithm(object):
@@ -141,13 +138,16 @@ class DQNAlgorithm(object):
         self.episode_reward = 0.0
         self.episode_index = 0
 
-    # def select_action(self, state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor):
-    def select_action(self, state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor):
-        # todo: check if state is available tensor
-        if np.random.randn() <= self.episilo:  # greedy policy
-        # if np.random.randn() <= 2:  # for debug
+    def select_action(self, state_tensor):
+        """
+        Call NN to select action.
+        :param state_tensor: state tensor of current step.
+        :return: action index of action space
+        """
+        # if True:  # for debug
         #     print("greedy policy")
-            action_value = self.eval_net.forward(state_1_tensor, state_2_tensor, state_3_tensor, state_4_tensor)
+        if np.random.rand() <= self.episilo:  # greedy policy
+            action_value = self.eval_net.forward(state_tensor)
             action_value = action_value.to("cpu")
             action = torch.max(action_value, 1)[1].data.numpy()
             action = action[0]
@@ -194,36 +194,24 @@ class DQNAlgorithm(object):
         if self.memory_counter > self.capacity:
             with torch.no_grad():
 
-                #
-                # state_image = torch.tensor([t.state['image'] for t in self.memory]).float().to(device)
-
-                state_1 = torch.tensor([t.state['state_1'] for t in self.memory]).float().to(device)
-                state_1 = state_1.unsqueeze(1)
-                state_2 = torch.tensor([t.state['state_2'] for t in self.memory]).float().to(device)
-                state_2 = state_2.unsqueeze(1)
-                state_3 = torch.tensor([t.state['state_3'] for t in self.memory]).float().to(device)
-                state_3 = state_3.unsqueeze(1)
-                state_4 = torch.tensor([t.state['state_4'] for t in self.memory]).float().to(device)
-                state_4 = state_4.unsqueeze(1)
+                state = []
+                for count in self.state_dim:
+                    state_id = torch.tensor([t.state[count] for t in self.memory]).float().to(device)
+                    state_id = state_id.unsqueeze(1)
+                    state.append(state_id)
 
                 action = torch.LongTensor([t.action for t in self.memory]).view(-1, 1).long().to(device)
                 reward = torch.tensor([t.reward for t in self.memory]).float().to(device)
 
-                # next_state_image = torch.tensor([t.next_state['image'] for t in self.memory]).float().to(device)
-
-                next_state_1 = torch.tensor([t.next_state['state_1'] for t in self.memory]).float().to(device)
-                next_state_1 = next_state_1.unsqueeze(1)
-                next_state_2 = torch.tensor([t.next_state['state_2'] for t in self.memory]).float().to(device)
-                next_state_2 = next_state_2.unsqueeze(1)
-                next_state_3 = torch.tensor([t.next_state['state_3'] for t in self.memory]).float().to(device)
-                next_state_3 = next_state_3.unsqueeze(1)
-                next_state_4 = torch.tensor([t.next_state['state_4'] for t in self.memory]).float().to(device)
-                next_state_4 = next_state_4.unsqueeze(1)
+                next_state = []
+                for count in self.state_dim:
+                    state_id = torch.tensor([t.next_state[count] for t in self.memory]).float().to(device)
+                    state_id = state_id.unsqueeze(1)
+                    next_state.append(state_id)
 
                 reward = (reward - reward.mean()) / (reward.std() + 1e-7)
 
-                target_v = reward + self.gamma * self.target_net(next_state_1, next_state_2, next_state_3,
-                                                                 next_state_4).max(1)[0]
+                target_v = reward + self.gamma * self.target_net(next_state).max(1)[0]
 
             # Update...
             for _ in range(self.dqn_epoch):  # iteration ppo_epoch
@@ -231,7 +219,7 @@ class DQNAlgorithm(object):
                                           drop_last=False):
                     # v = (self.eval_net(state_image,state_speedx,state_speedy,state_steer).gather(1, action))[index]
                     loss = self.loss_func(target_v[index].unsqueeze(1), (
-                        self.eval_net(state_1, state_2, state_3, state_4).gather(1, action))[index])
+                        self.eval_net(state).gather(1, action))[index])
 
                     self.optimizer.zero_grad()
                     loss.backward()

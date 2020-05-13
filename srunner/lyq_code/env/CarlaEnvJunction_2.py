@@ -907,22 +907,20 @@ class ScenarioEnv(object):
 
         # # creat Algorithm
         if self.agent_algorithm is None:
-            # original
-            # self.agent_algorithm = DQNAlgorithm(self.agent_instance.get_image_shape(),
-            #                                     self.agent_instance.get_action_shape())
-
-            # easy version test
-            self.agent_algorithm = DQNAlgorithm(4, self.agent_instance.get_action_shape())
+            # initialize algorithm module
+            # set action and state dimension to algorithm module from agent module
+            self.agent_algorithm = DQNAlgorithm(self.agent_instance.get_state_dim(),
+                                                self.agent_instance.get_action_dim())
             # self.agent_algorithm.load_net()
 
             # use a flag to decide to train/run
             finetune = 0  # default is to train without previous weight
-            try:
-                if finetune:
+            if finetune:
+                try:
                     # train without weights
                     self.agent_algorithm.load_net()
-            except:
-                print("Fail to load weight.")
+                except:
+                    print("Fail to load weight.")
 
         # set algorithm module to agent instance
         self.agent_instance.set_algorithm(self.agent_algorithm)
@@ -985,8 +983,7 @@ class ScenarioEnv(object):
 
             # get npc vehicle state for ego vehicle
             near_npc_dict = self.trafficflow.get_near_npc()
-
-            self.agent_instance.get_near_npc(near_npc_dict)  # get near npc vehicles from env
+            self.agent_instance.get_near_npc(near_npc_dict)
 
             # get action
             ego_action = self.agent_instance()
