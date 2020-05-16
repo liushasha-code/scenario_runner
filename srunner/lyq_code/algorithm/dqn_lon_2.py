@@ -156,12 +156,6 @@ class DQNAlgorithm(object):
             action = np.random.randint(0, self.action_dim)
         return action
 
-    def store_transition(self, transition):
-        index = self.memory_counter % self.capacity
-        self.memory[index] = transition
-        self.memory_counter += 1
-        self.total_reward += transition.reward
-
     def action_reward(self, reward):
         self.reward = reward
 
@@ -172,6 +166,12 @@ class DQNAlgorithm(object):
         epsilo_decay = 100
 
         self.episilo = epsilo_start + (epsilo_final - epsilo_start) * math.exp(-1. * episode_index / epsilo_decay)
+
+    def store_transition(self, transition):
+        index = self.memory_counter % self.capacity
+        self.memory[index] = transition
+        self.memory_counter += 1
+        self.total_reward += transition.reward
 
     def update(self):
         # 每个episode结束，清零total_reward
@@ -224,9 +224,9 @@ class DQNAlgorithm(object):
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    self.writer.add_scalar('loss/value_loss', loss, self.update_count)
+                    self.writer.add_scalar('loss/value_loss', loss, self.update_count)  # add_scalars(main_tag, tag_scalar_dict, global_step=None, walltime=None)
                     self.update_count += 1
-                    if self.update_count % 100 == 0:
+                    if self.update_count % 100 == 0:  # update dict each 100 update times
                         self.target_net.load_state_dict(self.eval_net.state_dict())
 
             # self.memory_counter += 1
