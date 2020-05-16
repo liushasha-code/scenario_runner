@@ -193,7 +193,7 @@ class DQNAlgorithm(object):
         print('episode:', self.episode)
         if self.memory_counter > self.capacity:
             with torch.no_grad():
-
+                # todo: need verification
                 state = []
                 for count in self.state_dim:
                     state_id = torch.tensor([t.state[count] for t in self.memory]).float().to(device)
