@@ -85,15 +85,20 @@ class Net(nn.Module):
         )
         print("Net initialized")
 
-    def forward(self, state_tensor):
+    def forward(self, x):
         """
         Forward propagation of NN.
+        """
+
         """
         input_tensor = state_tensor[0]
         for item in state_tensor[1:]:
             input_tensor = torch.cat((input_tensor, item), 1)
 
         return self.fc(input_tensor.to(device))
+        """
+
+        return self.fc(x)
 
 
 class DQNAlgorithm(object):
@@ -101,7 +106,8 @@ class DQNAlgorithm(object):
         Fix state, using only ground truth info.
     """
 
-    capacity = 800
+    # capacity = 800
+    capacity = 5  # for debug memory
     learning_rate = 1e-3
     memory_counter = 0
     batch_size = 400
@@ -138,16 +144,29 @@ class DQNAlgorithm(object):
         self.episode_reward = 0.0
         self.episode_index = 0
 
-    def select_action(self, state_tensor):
+    def select_action(self, state):
         """
         Call NN to select action.
-        :param state_tensor: state tensor of current step.
+        :param state: state in list.
         :return: action index of action space
         """
+
+        # transform state list to tensor for NN forward
+        # todo: test np.array() method, seem more concise
+
+        state = np.array(state)
+        state = torch.FloatTensor(state.reshape(1, -1)).to(device)
+
+        # state_tensor = []
+        # for item in state:
+        #     item = torch.tensor([item])
+        #     item = item.unsqueeze(0)
+        #     state_tensor.append(item)
+
         # if True:  # for debug
         #     print("greedy policy")
         if np.random.rand() <= self.episilo:  # greedy policy
-            action_value = self.eval_net.forward(state_tensor)
+            action_value = self.eval_net.forward(state)
             action_value = action_value.to("cpu")
             action = torch.max(action_value, 1)[1].data.numpy()
             action = action[0]
@@ -178,7 +197,6 @@ class DQNAlgorithm(object):
         print('episode_total_reward:', self.total_reward)
         if self.total_reward > 1200:
             self.learning_rate = 1e-4
-
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.learning_rate)
 
         self.episode_reward += self.total_reward
@@ -193,38 +211,32 @@ class DQNAlgorithm(object):
         print('episode:', self.episode)
         if self.memory_counter > self.capacity:
             with torch.no_grad():
-                # todo: need verification
-                state = []
-                for count in self.state_dim:
-                    state_id = torch.tensor([t.state[count] for t in self.memory]).float().to(device)
-                    state_id = state_id.unsqueeze(1)
-                    state.append(state_id)
 
-                action = torch.LongTensor([t.action for t in self.memory]).view(-1, 1).long().to(device)
-                reward = torch.tensor([t.reward for t in self.memory]).float().to(device)
+                batch_state = torch.FloatTensor([t.state for t in self.memory]).float().to(device)
+                batch_next_state = torch.FloatTensor([t.next_state for t in self.memory]).float().to(device)
+                batch_action = torch.LongTensor([t.action for t in self.memory]).view(-1, 1).long().to(device)
+                batch_reward = torch.tensor([t.reward for t in self.memory]).float().to(device)
 
-                next_state = []
-                for count in self.state_dim:
-                    state_id = torch.tensor([t.next_state[count] for t in self.memory]).float().to(device)
-                    state_id = state_id.unsqueeze(1)
-                    next_state.append(state_id)
+                # todo: check if effective
+                # normalization of reward
+                # reward = (reward - reward.mean()) / (reward.std() + 1e-7)
 
-                reward = (reward - reward.mean()) / (reward.std() + 1e-7)
+                target_v = batch_reward + self.gamma * self.target_net(batch_next_state).max(1)[0]
 
-                target_v = reward + self.gamma * self.target_net(next_state).max(1)[0]
+                # todo: add terminal status
 
             # Update...
             for _ in range(self.dqn_epoch):  # iteration ppo_epoch
                 for index in BatchSampler(SubsetRandomSampler(range(len(self.memory))), batch_size=self.batch_size,
                                           drop_last=False):
-                    # v = (self.eval_net(state_image,state_speedx,state_speedy,state_steer).gather(1, action))[index]
+
                     loss = self.loss_func(target_v[index].unsqueeze(1), (
-                        self.eval_net(state).gather(1, action))[index])
+                        self.eval_net(batch_state).gather(1, batch_action))[index])
 
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    self.writer.add_scalar('loss/value_loss', loss, self.update_count)  # add_scalars(main_tag, tag_scalar_dict, global_step=None, walltime=None)
+                    self.writer.add_scalar('loss/value_loss', loss, self.update_count)  # Usage: add_scalars(main_tag, tag_scalar_dict, global_step=None, walltime=None)
                     self.update_count += 1
                     if self.update_count % 100 == 0:  # update dict each 100 update times
                         self.target_net.load_state_dict(self.eval_net.state_dict())
@@ -267,3 +279,13 @@ class DQNAlgorithm(object):
             print("Net loading FAILS!")
 
 
+def test():
+    """
+    Test RL module.
+    """
+
+    pass
+
+
+if __name__ == "__main__":
+    test()

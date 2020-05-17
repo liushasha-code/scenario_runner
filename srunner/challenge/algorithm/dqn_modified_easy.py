@@ -86,7 +86,9 @@ class DQNAlgorithm(object):
 
     """
 
-    capacity = 800
+    # capacity = 800
+    capacity = 10
+
     learning_rate = 1e-3
     memory_counter = 0
     batch_size = 400

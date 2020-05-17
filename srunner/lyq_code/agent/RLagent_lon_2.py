@@ -601,6 +601,7 @@ class RLAgent:
         steering = self.lateral_controller.run_step(self._waypoint_buffer[0][0])  # carla.transform
 
         # get longitudinal control from RL
+        # state is a list consists of float value
         state = self.get_state()
 
         if self.state is None:
@@ -611,14 +612,8 @@ class RLAgent:
             self.algorithm.store_transition(transition)
             self.state = self.next_state
 
-        state_tensor = []
-        for item in state:
-            item = torch.tensor([item])
-            item = item.unsqueeze(0)
-            state_tensor.append(item)
-
         # get action from RL module
-        self.action = self.algorithm.select_action(state_tensor)
+        self.action = self.algorithm.select_action(state)
         # print("action_index: ", action_index)
 
         control = carla.VehicleControl()
