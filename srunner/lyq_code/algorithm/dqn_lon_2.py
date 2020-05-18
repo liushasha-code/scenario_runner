@@ -106,8 +106,9 @@ class DQNAlgorithm(object):
         Fix state, using only ground truth info.
     """
 
-    # capacity = 800
-    capacity = 5  # for debug memory
+    capacity = 3000
+    # capacity = 5  # for debug memory
+
     learning_rate = 1e-3
     memory_counter = 0
     batch_size = 400

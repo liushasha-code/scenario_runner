@@ -614,7 +614,11 @@ class RLAgent:
 
         # get action from RL module
         self.action = self.algorithm.select_action(state)
-        # print("action_index: ", action_index)
+
+        action_list = ['acc', 'maintain', 'brake']
+        print("action: ", action_list[self.action])
+        # print('throttle: ', self.action_space[self.action][0])
+        # print('brake: ', self.action_space[self.action][1])
 
         control = carla.VehicleControl()
         control.steer = steering

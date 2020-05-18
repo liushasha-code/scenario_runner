@@ -1,10 +1,7 @@
 """
-Modified from CarlaEnv_Junction.
+This is a developing version of env modified from CarlaEnvJunction.
 
-A developing env to train RL agent for junction scenario.
-
-log 2020.05.07
-Add traffic flow module.
+A environment to train and test RL agent for junction scenario.
 
 """
 
@@ -14,12 +11,7 @@ import glob
 import os
 import sys
 
-# using carla 095
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla")
-# sys.path.append("/home/lyq/CARLA_simulator/CARLA_095/PythonAPI/carla/agents")
-# carla_path = '/home/lyq/CARLA_simulator/CARLA_095/PythonAPI'  # carla egg
-
-# using carla 098
+# This script is developed based on carla 098 API
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla")
 sys.path.append("/home/lyq/CARLA_simulator/CARLA_098/PythonAPI/carla/agents")
 carla_path = '/home/lyq/CARLA_simulator/CARLA_098/PythonAPI'
@@ -45,6 +37,7 @@ import importlib
 import math
 import numpy as np
 import xml.etree.ElementTree as ET
+import collections
 
 import py_trees
 
@@ -190,8 +183,9 @@ def get_rotation_matrix_2D(transform):
                                    [sy, cy]])
     return rotation_matrix_2D
 
+
 # paras for drl training
-EPISODES = 1
+EPISODES = 10
 
 # default junction right turn scenario paras
 scenario_para_dict = {
@@ -199,6 +193,39 @@ scenario_para_dict = {
     'start_point': np.array([53.0, 128.0, 1.0]),
     'end_point': np.array([5.24, 92.28, 1.0]),
 }
+
+
+class CollisionSensor(object):
+    def __init__(self, parent_actor):
+        self.sensor = None
+        self.history = []
+        self._parent = parent_actor
+        # self.collision = False
+        world = self._parent.get_world()
+        bp = world.get_blueprint_library().find('sensor.other.collision')
+        self.sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._parent)
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self.sensor.listen(lambda event: CollisionSensor._on_collision(weak_self, event))
+
+    def get_collision_history(self):
+        history = collections.defaultdict(int)
+        for frame, intensity in self.history:
+            history[frame] += intensity
+        return history
+
+    @staticmethod
+    def _on_collision(weak_self, event):
+        self = weak_self()
+        if not self:
+            return
+        # self.collision = True
+        impulse = event.normal_impulse
+        intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
+        self.history.append((event.frame, intensity))
+        if len(self.history) > 4000:
+            self.history.pop(0)
 
 
 class ScenarioEnv(object):
@@ -250,6 +277,8 @@ class ScenarioEnv(object):
 
 
         self.ego_vehicle = None
+        self.sensor = None  # collision sensor
+
         self._system_error = False
         self.actors = []
 
@@ -387,6 +416,11 @@ class ScenarioEnv(object):
             self.ego_vehicle.destroy()
             self.ego_vehicle = None
 
+        # clean collision sensor
+        if self.sensor.sensor.destroy():
+            self.sensor = None
+            print("collision sensor is removed.")
+
     def __del__(self):
         """
         Cleanup and delete actors, ScenarioManager and CARLA world
@@ -415,6 +449,13 @@ class ScenarioEnv(object):
             if self.agent_instance is not None:
                 self.setup_sensors(self.agent_instance.sensors(), self.ego_vehicle)
             self.ego_vehicle.set_transform(start_transform)
+
+        # add collision sensor
+        try:
+            self.sensor = CollisionSensor(self.ego_vehicle)
+            print("Collision sensor is spawned on ego vehicle.")
+        except:
+            print("Fail to spawn collision sensor on ego vehicle.")
 
         # wait for the ego_car to land
         while self.ego_vehicle.get_transform().location.z > start_transform.location.z:
@@ -498,107 +539,6 @@ class ScenarioEnv(object):
                                     color=carla.Color(0, 0, 255), life_time=persistency)
         self.world.debug.draw_point(waypoints[-1][0].location + carla.Location(z=vertical_shift), size=0.2,
                                     color=carla.Color(255, 0, 0), life_time=persistency)
-
-    def compute_current_statistics(self):
-
-        target_reached = False
-        score_composed = 0.0
-        score_penalty = 0.0
-        score_route = 0.0
-
-        list_traffic_events = []
-        for node in self.master_scenario.scenario.test_criteria.children:
-            if node.list_traffic_events:
-                list_traffic_events.extend(node.list_traffic_events)
-
-        list_collisions = []
-        list_red_lights = []
-        list_wrong_way = []
-        list_route_dev = []
-        list_sidewalk_inv = []
-        list_stop_inf = []
-        # analyze all traffic events
-        for event in list_traffic_events:
-            if event.get_type() == TrafficEventType.COLLISION_STATIC:
-                score_penalty += PENALTY_COLLISION_STATIC
-                msg = event.get_message()
-                if msg:
-                    list_collisions.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.COLLISION_VEHICLE:
-                score_penalty += PENALTY_COLLISION_VEHICLE
-                msg = event.get_message()
-                if msg:
-                    list_collisions.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.COLLISION_PEDESTRIAN:
-                score_penalty += PENALTY_COLLISION_PEDESTRIAN
-                msg = event.get_message()
-                if msg:
-                    list_collisions.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.TRAFFIC_LIGHT_INFRACTION:
-                score_penalty += PENALTY_TRAFFIC_LIGHT
-                msg = event.get_message()
-                if msg:
-                    list_red_lights.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.WRONG_WAY_INFRACTION:
-                score_penalty += PENALTY_WRONG_WAY
-                msg = event.get_message()
-                if msg:
-                    list_wrong_way.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.ROUTE_DEVIATION:
-                score_penalty += PENALTY_ROUTE_DEVIATION
-                msg = event.get_message()
-                if msg:
-                    list_route_dev.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.ON_SIDEWALK_INFRACTION:
-                score_penalty += PENALTY_SIDEWALK_INVASION
-                msg = event.get_message()
-                if msg:
-                    list_sidewalk_inv.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.STOP_INFRACTION:
-                score_penalty += PENALTY_STOP
-                msg = event.get_message()
-                if msg:
-                    list_stop_inf.append(event.get_message())
-
-            elif event.get_type() == TrafficEventType.ROUTE_COMPLETED:
-                score_route = 50.0
-                target_reached = True
-            elif event.get_type() == TrafficEventType.ROUTE_COMPLETION:
-                if not target_reached:
-                    # if event.get_dict():
-                    #     score_route = event.get_dict()['route_completed']
-                    # else:
-                    #     # 计算前进距离
-                    #     # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
-
-                    endpoint_dist = self.route[-1][0].location.distance(self.ego_vehicle.get_transform().location)
-                    print('endpoint_dist:', endpoint_dist)
-                    print('last_step_dist:', self.last_step_dist)
-                    rundist = self.last_step_dist - endpoint_dist
-                    print('rundist:', rundist)
-                    ang = abs(self.calculate_angle())
-                    print('angle:', ang)
-                    if rundist > 0:
-                        score_route = (rundist / self.route_length) * 2000
-                    else:
-                        score_route = -5
-                    self.last_step_dist = endpoint_dist
-
-            score_penalty += 2 * (ang / 90)
-
-        # score_composed = max(score_route - score_penalty, 0.0)
-        score_composed = score_route - score_penalty
-        print('score_route:', score_route)
-        print('score_penalty:', score_penalty)
-
-        return score_composed, score_route, score_penalty
 
     def calculate_angle(self):
         # calculate angle between local waypoint direction
@@ -914,11 +854,12 @@ class ScenarioEnv(object):
             # self.agent_algorithm.load_net()
 
             # use a flag to decide to train/run
-            finetune = 0  # default is to train without previous weight
+            finetune = 1  # default is to train without previous weight
             if finetune:
                 try:
                     # train without weights
                     self.agent_algorithm.load_net()
+                    print('Load Net successfully.')
                 except:
                     print("Fail to load weight.")
 
@@ -949,6 +890,136 @@ class ScenarioEnv(object):
 
         # set spectator
         self.set_spectator()
+
+    def compute_current_statistics(self):
+
+        target_reached = False
+        score_composed = 0.0
+        score_penalty = 0.0
+        score_route = 0.0
+
+        list_traffic_events = []
+        for node in self.master_scenario.scenario.test_criteria.children:
+            if node.list_traffic_events:
+                list_traffic_events.extend(node.list_traffic_events)
+
+        list_collisions = []
+        list_red_lights = []
+        list_wrong_way = []
+        list_route_dev = []
+        list_sidewalk_inv = []
+        list_stop_inf = []
+        # analyze all traffic events
+        for event in list_traffic_events:
+            if event.get_type() == TrafficEventType.COLLISION_STATIC:
+                score_penalty += PENALTY_COLLISION_STATIC
+                msg = event.get_message()
+                if msg:
+                    list_collisions.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.COLLISION_VEHICLE:
+                score_penalty += PENALTY_COLLISION_VEHICLE
+                msg = event.get_message()
+                if msg:
+                    list_collisions.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.COLLISION_PEDESTRIAN:
+                score_penalty += PENALTY_COLLISION_PEDESTRIAN
+                msg = event.get_message()
+                if msg:
+                    list_collisions.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.TRAFFIC_LIGHT_INFRACTION:
+                score_penalty += PENALTY_TRAFFIC_LIGHT
+                msg = event.get_message()
+                if msg:
+                    list_red_lights.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.WRONG_WAY_INFRACTION:
+                score_penalty += PENALTY_WRONG_WAY
+                msg = event.get_message()
+                if msg:
+                    list_wrong_way.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.ROUTE_DEVIATION:
+                score_penalty += PENALTY_ROUTE_DEVIATION
+                msg = event.get_message()
+                if msg:
+                    list_route_dev.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.ON_SIDEWALK_INFRACTION:
+                score_penalty += PENALTY_SIDEWALK_INVASION
+                msg = event.get_message()
+                if msg:
+                    list_sidewalk_inv.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.STOP_INFRACTION:
+                score_penalty += PENALTY_STOP
+                msg = event.get_message()
+                if msg:
+                    list_stop_inf.append(event.get_message())
+
+            elif event.get_type() == TrafficEventType.ROUTE_COMPLETED:
+                score_route = 50.0
+                target_reached = True
+            elif event.get_type() == TrafficEventType.ROUTE_COMPLETION:
+                if not target_reached:
+                    # if event.get_dict():
+                    #     score_route = event.get_dict()['route_completed']
+                    # else:
+                    #     # 计算前进距离
+                    #     # self.route is a list of tuple(carla.Waypoint.transform, RoadOption)
+
+                    endpoint_dist = self.route[-1][0].location.distance(self.ego_vehicle.get_transform().location)
+                    print('endpoint_dist:', endpoint_dist)
+                    print('last_step_dist:', self.last_step_dist)
+                    rundist = self.last_step_dist - endpoint_dist
+                    print('rundist:', rundist)
+                    ang = abs(self.calculate_angle())
+                    print('angle:', ang)
+                    if rundist > 0:
+                        score_route = (rundist / self.route_length) * 2000
+                    else:
+                        score_route = -5
+                    self.last_step_dist = endpoint_dist
+
+            score_penalty += 2 * (ang / 90)
+
+        # score_composed = max(score_route - score_penalty, 0.0)
+        score_composed = score_route - score_penalty
+        print('score_route:', score_route)
+        print('score_penalty:', score_penalty)
+
+        return score_composed, score_route, score_penalty
+
+    def compute_reward(self):
+        """
+        Compute reward for RL agent
+        :return: reward of current step
+        """
+        # reward
+        reward_collision = -10000.0
+
+        # collision
+        if self.sensor is not None:
+            if len(self.sensor.history) > 0:
+                reward = reward_collision
+                done_flag = True  # flag to identify is episode is over
+
+        # route reward
+        # calculate reward of percentage of route complation
+        self.route
+
+
+
+        # speed
+        velocity = self.ego_vehicle.get_velocity()
+
+
+        self.ego_vehicle
+
+
+        return reward, done_flag
 
     def run_route(self, trajectory, no_master=False):
 
@@ -1049,10 +1120,15 @@ class ScenarioEnv(object):
                     time.sleep(2.0)
                     continue
 
+        # update algorithm after each episode
         # learn
         # 更新Q网络
         # 测试非训练框架时屏蔽此句
         self.agent_instance.algorithm.update()
+
+
+        # test_return = self.agent_instance.algorithm.update()
+        # print('d')
         # if self.agent_instance.algorithm.update():
         #     return
 
