@@ -108,18 +108,18 @@ class RLAgent:
         # waypoints queue
         self._waypoints_queue = deque(maxlen=100000)  # maximum waypoints to store in current route
         # waypoint buffer
-        self._buffer_size = 5
+        self._buffer_size = 50
         self._waypoint_buffer = deque(maxlen=self._buffer_size)
-        # near waypoint
-        self.near_waypoint_queue = deque(maxlen=5)
-        # min distance
-        # MIN_DISTANCE_PERCENTAGE = 0.9
-        # default params
-        # self._dt = 1.0 / 20.0
-        # self._target_speed = 20.0  # Km/h
-        # self._sampling_radius = self._target_speed * 1 / 3.6  # 1 seconds horizon
-        # self._min_distance = self._sampling_radius * self.MIN_DISTANCE_PERCENTAGE
-        self._min_distance = 3  # min distance of reaching waypoints
+        # near waypoints is waypoint popped out from buffer
+        self.near_waypoint_queue = deque(maxlen=50)
+
+        # min distance threthold of waypoint reaching
+        MIN_DISTANCE_PERCENTAGE = 1.5
+        self._target_speed = 5.0  # m/s
+        self._sampling_radius = self._target_speed * 1  # maximum distance vehicle move in 1 seconds
+        self._min_distance = self._sampling_radius * MIN_DISTANCE_PERCENTAGE
+
+        self.off_route = False
 
         # ==================================================
         # set lateral controller
@@ -173,7 +173,7 @@ class RLAgent:
             'K_P': 1.95,
             'K_D': 0.01,
             'K_I': 1.4,
-            'dt': 0.03}
+            'dt': 0.001}
 
         # todo: check if get dict correctly
         # init controller
@@ -206,11 +206,45 @@ class RLAgent:
         ]
         return sensors
 
+    def destroy(self):
+        """
+        Destroy (clean-up) the agent
+        :return:
+        """
+        pass
+
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
+        """
+        Get global plan from env.
+        :param global_plan_gps: route in gps
+        :param global_plan_world_coord: route in world coords
+        """
+        if self.track == Track.CAMERAS or self.track == Track.ALL_SENSORS:
+            ds_ids = downsample_route(global_plan_world_coord, 32)
+
+            self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1])
+                                             for x in ds_ids]
+            self._global_plan = [global_plan_gps[x] for x in ds_ids]
+
+        else:  # No downsampling is performed
+
+            self._global_plan = global_plan_gps
+            self._global_plan_world_coord = global_plan_world_coord  # this is the final route to follow
+
+        # ==================================================
+        # get waypoints in queue for buffering
+        self._waypoints_queue.clear()
+        # for elem in self._global_plan_world_coord:
+        for elem in global_plan_world_coord:
+            self._waypoints_queue.append(elem)
+
+        # print('debug global route')
+
     def buffer_waypoint(self):
         """
-        Buffer waypoint
-        Get 2 nearest waypoint
-        :return:
+        Buffering waypoints for algorithm.
+
+        :return: 2 nearest waypoint
         """
         # Buffering the waypoints
 
@@ -286,47 +320,14 @@ class RLAgent:
         print('local direction updated.')
         return last_waypoint_location, next_waypoint_location
 
-    def destroy(self):
-        """
-        Destroy (clean-up) the agent
-        :return:
-        """
-        pass
-
-    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
-        """
-        Get global plan from env.
-        :param global_plan_gps: route in gps
-        :param global_plan_world_coord: route in world coords
-        """
-        if self.track == Track.CAMERAS or self.track == Track.ALL_SENSORS:
-            ds_ids = downsample_route(global_plan_world_coord, 32)
-
-            self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1])
-                                             for x in ds_ids]
-            self._global_plan = [global_plan_gps[x] for x in ds_ids]
-
-        else:  # No downsampling is performed
-
-            self._global_plan = global_plan_gps
-            self._global_plan_world_coord = global_plan_world_coord  # this is the final route to follow
-
-        # ==================================================
-        # get waypoints in queue for buffering
-        self._waypoints_queue.clear()
-        # for elem in self._global_plan_world_coord:
-        for elem in global_plan_world_coord:
-            self._waypoints_queue.append(elem)
-
-        # print('debug global route')
-
     def get_navigation_state(self):
         """
         The State based on ground truth geometry and kinematics.
 
         Consider coord frame fixed with local lane.
 
-        Stage 1: follow waypoints plan
+        todo: add target waypoints from a coarse route as state
+
         :return: State vector
         """
 
@@ -519,6 +520,99 @@ class RLAgent:
 
         return state
 
+    def buffer_waypoint2(self):
+        """
+        Buffering waypoints method 2.
+
+        :return: 2 nearest waypoint
+        """
+        # dynamic distance threthold
+        MIN_DISTANCE_PERCENTAGE = 1.
+        d_t = .5
+        vel = self.ego_vehicle.get_velocity()
+        speed = math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
+        self._sampling_radius = speed * d_t  # maximum distance vehicle move in time step(in seconds)
+        self._min_distance = self._sampling_radius * MIN_DISTANCE_PERCENTAGE
+
+        # flag of if off route
+        self.off_route = False
+
+        # Buffering the waypoints
+
+        # # original version
+        # if not self._waypoint_buffer:
+        #     for i in range(self._buffer_size):
+        #         if self._waypoints_queue:
+        #             self._waypoint_buffer.append(
+        #                 self._waypoints_queue.popleft())
+        #         else:
+        #             break
+
+        # check and buffer waypoints
+        least_buffer_num = 10
+        if len(self._waypoint_buffer) <= least_buffer_num:
+            for i in range(self._buffer_size - len(self._waypoint_buffer)):
+                if self._waypoints_queue:
+                    self._waypoint_buffer.append(
+                        self._waypoints_queue.popleft())
+                else:
+                    break
+
+        # purge the queue of obsolete waypoints
+        max_index = -1
+        for i, (waypoint, _) in enumerate(self._waypoint_buffer):
+            # if waypoint here is transform
+            current_location = waypoint
+            if waypoint.location.distance(self.ego_vehicle.get_location()) < self._min_distance:
+                # if waypoint here is waypoint class
+                # if waypoint.transform.location.distance(self.ego_vehicle.get_location()) < self._min_distance:
+                max_index = i
+
+        # supplyment more waypoints
+        if max_index >= 0:
+            for i in range(max_index + 1):  # max_index + 1 is the amount number of waypoints to pop out into buffer
+                self.near_waypoint_queue.append(self._waypoint_buffer.popleft())
+
+        # find 2 nearest waypoint in near_waypoint_queue
+        distance_list = []
+        for i, (waypoint, _) in enumerate(self.near_waypoint_queue):
+            # distance = waypoint.transform.location.distance(self.ego_vehicle.get_location())
+            distance = waypoint.location.distance(self.ego_vehicle.get_location())
+            add_dict = {'index': i, 'waypoint': waypoint, 'distance': distance}
+            distance_list.append(add_dict)
+
+        # todo: check if distance is effective
+        # distance between vehicle and waypoints should be smaller than original distance between waypoints
+        # if distance_to_vehicle(self.ego_vehicle, waypoint.location) >= min_distance:
+        #     pass
+
+        # using heapq to find nearest distance waypoints
+        if len(distance_list) < 2:
+            wp1_loc = self.ego_vehicle.get_location()
+            wp2_loc = distance_list[0]['waypoint'].location
+
+        else:
+            wp1, wp2 = heapq.nsmallest(2, distance_list, key=lambda s: s['distance'])
+            threthold = 3.0
+            if wp1['distance'] > threthold and wp2['distance'] > threthold:
+                self.off_route = True
+                print('offroute: ', self.off_route)
+
+            # plot local direction of plan
+            if wp1['index'] < wp2['index']:
+                cup = wp1
+                wp1 = wp2
+                wp2 = cup
+
+            wp1_loc = wp1['waypoint'].location
+            wp2_loc = wp2['waypoint'].location
+
+        wp1_loc.z = 1.
+        wp2_loc.z = 1.
+        debug = self.world.debug
+        debug.draw_arrow(wp1_loc, wp2_loc, thickness=0.1, arrow_size=0.1,
+                         color=carla.Color(0, 255, 0), life_time=1.)
+
     def __call__(self):
         timestamp = GameTime.get_time()
         wallclock = GameTime.get_wallclocktime()
@@ -538,9 +632,11 @@ class RLAgent:
         :return: control command of ego vehicle (carla.VehicleControl)
         """
 
+        """
+        previous version 
+        
         # ==================================================
-        # todo: package previous method into method
-        # get info about ego vehicle
+        # get kinematic state of ego vehicle
 
         # buffer waypoints and get 2 nearest waypoints
         last_waypoint_location, next_waypoint_location = self.buffer_waypoint()
@@ -553,52 +649,26 @@ class RLAgent:
         print("diversion_angle", diversion_angle)
 
         # get state about navigation(target waypoint)
-        # todo: this should be master_scenario_state in future version
         # vector to target waypoint in local frame
         lon_diatance, lat_diatance = self.get_navigation_state()
 
         print("lon_diatance: ", lon_diatance)
         print("lat_diatance: ", lat_diatance)
 
-        # todo: add state, velocity projection on local direction
-        # lon_vel_nav, lat_vel_nav = self.get_velo_nav()
-
-        # print to debug
-        print("lat_offset: ", lat_offset)
-        print("diversion_angle: ", diversion_angle)
-        print("lon_diatance: ", lon_diatance)
-        print("lat_diatance: ", lat_diatance)
-
-        # stack all state into state_dict
-        # state_list = [lon_diatance, lat_diatance, lat_offset, diversion_angle]
-        # state_dict = {"lon_diatance": lon_diatance,
-        #               "lat_diatance": lat_diatance,
-        #               "lat_offset": lat_offset,
-        #               "diversion_angle": diversion_angle
-        #               }
-        # state_dict = {"state_1": lon_diatance,
-        #               "state_2": lat_diatance,
-        #               "state_3": lat_offset,
-        #               "state_4": diversion_angle
-        #               }
-        # print("All state extracted.")
-
-        # utilize stored state
-        # transform state into tensor
-        # state_tensor = []
-        # for state in state_list:  # state stored in list
-        #     tensor = torch.tensor([state])
-        #     tensor = tensor.unsqueeze(0)
-        #     state_tensor.append(tensor)
-
-        # ==================================================
         # try to catch a bug
         # if diversion_angle >= 50:
         #     print("need to check")
         # ==================================================
+        
+        """
+
+        self.buffer_waypoint2()
 
         # get lateral control action
         steering = self.lateral_controller.run_step(self._waypoint_buffer[0][0])  # carla.transform
+
+        next_loc = self._waypoint_buffer[0][0].location
+        self.world.debug.draw_point(next_loc, size=0.15, color=carla.Color(255, 0, 0), life_time=.5)
 
         # get longitudinal control from RL
         # state is a list consists of float value

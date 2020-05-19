@@ -417,9 +417,10 @@ class ScenarioEnv(object):
             self.ego_vehicle = None
 
         # clean collision sensor
-        if self.sensor.sensor.destroy():
-            self.sensor = None
-            print("collision sensor is removed.")
+        if self.sensor:
+            if self.sensor.sensor.destroy():
+                self.sensor = None
+                print("collision sensor is removed.")
 
     def __del__(self):
         """
@@ -997,39 +998,47 @@ class ScenarioEnv(object):
         Compute reward for RL agent
         :return: reward of current step
         """
-        # reward
-        reward_collision = -10000.0
+        done_flag = False
 
-        # collision
+        reward = 0.
+
+        # collision reward
+        penalty_collision = -10000.0
         if self.sensor is not None:
             if len(self.sensor.history) > 0:
-                reward = reward_collision
+                reward += penalty_collision
                 done_flag = True  # flag to identify is episode is over
 
-        # route reward
-        # calculate reward of percentage of route complation
-        self.route
+        # off-route penalty
+        penalty_offset = -1000.0
+        if self.agent_instance.off_route:
+            reward += penalty_offset
+            done_flag = True
 
-
+        # todo: add reward of route completion
+        #
 
         # speed
-        velocity = self.ego_vehicle.get_velocity()
+        target_speed = 5.0  # meters per second
+        vel = self.ego_vehicle.get_velocity()
+        speed = math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
+        reward -= abs(target_speed - speed)
 
-
-        self.ego_vehicle
-
+        # time spent
+        penalty_time = -1.0
+        reward += penalty_time
 
         return reward, done_flag
 
     def run_route(self, trajectory, no_master=False):
 
-        print('route is running', self.route_is_running())
+        # print('route is running', self.route_is_running())
         GameTime.restart()
         last_time = GameTime.get_time()
         steer = 0.0
         last_step_loaction_x = self.route[0][0].location.x
         last_step_loaction_y = self.route[0][0].location.y
-        print('last_time:', last_time)
+        print('timestamp: ', last_time)
 
         # for debug RL lon
         # set ego vehicle once again
@@ -1037,8 +1046,6 @@ class ScenarioEnv(object):
         self.agent_instance.set_ego_vehicle(self.ego_vehicle)
         # set world
         self.agent_instance.set_world(self.world)
-
-
 
         while no_master or self.route_is_running():
             self.timestamp = self.world.get_snapshot()
@@ -1093,13 +1100,14 @@ class ScenarioEnv(object):
             # show current score
             # 打分
             # 测试非训练框架时屏蔽此句
-            total_score, route_score, infractions_score = self.compute_current_statistics()
+            # total_score, route_score, infractions_score = self.compute_current_statistics()
+
+            reward, done_flag = self.compute_reward()
 
             # send the reward to agent
-            # 把reward传给agent保存
-            # 测试非训练框架时屏蔽此句
-            self.agent_instance.get_reward(total_score)
+            self.agent_instance.get_reward(reward)
 
+            # plot route
             if self.route_visible:
                 turn_positions_and_labels = clean_route(trajectory)
                 self.draw_waypoints(trajectory, turn_positions_and_labels,
@@ -1120,12 +1128,13 @@ class ScenarioEnv(object):
                     time.sleep(2.0)
                     continue
 
-        # update algorithm after each episode
-        # learn
-        # 更新Q网络
-        # 测试非训练框架时屏蔽此句
-        self.agent_instance.algorithm.update()
+            # manually end loop
+            if done_flag:
+                break
 
+        # update algorithm after each episode
+        # todo: add API option to select if update, i.e. finetune option
+        self.agent_instance.algorithm.update()
 
         # test_return = self.agent_instance.algorithm.update()
         # print('d')
