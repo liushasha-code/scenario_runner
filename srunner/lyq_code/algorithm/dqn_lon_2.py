@@ -50,10 +50,6 @@ torch.manual_seed(seed)
 # date info, ie: '20200509'
 date = datetime.date.today().strftime('%Y%m%d')
 
-# use a absolute path for saving
-# save_dir = '/home/lyq/RL_TrainingResult/'+date+'/'  # consider date
-save_dir = '/home/lyq/RL_TrainingResult/'
-
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -117,7 +113,16 @@ class DQNAlgorithm(object):
     episilo = 0.9
     dqn_epoch = 10
 
-    episode = 0
+    episode = 0  #
+
+    # path to save NN dict and training log
+    # dict saving path
+    model_path = '../model_dict/'
+    # log path
+    log_path = '/home/lyq/RL_TrainingLog'  # caution: using a absolute path
+
+    # name of current model to save
+    name = 'dqn'
 
     def __init__(self, state_dim, action_dim):
         self.state_dim = state_dim
@@ -138,8 +143,8 @@ class DQNAlgorithm(object):
         # self.path = "/home/lyq/PycharmProjects/scenario_runner/srunner/challenge/DQN/DQN_training_test/"
 
         # original
-        self.path = './DQN_save/'  # store weight
-        self.writer = SummaryWriter('./DQN_save/logs/training_test')  # store training process
+        # self.path = './DQN_save/'  # path to store NN parameters
+        self.writer = SummaryWriter(self.log_path)  # store training process
 
         self.total_reward = 0.0
         self.episode_reward = 0.0
@@ -196,11 +201,19 @@ class DQNAlgorithm(object):
     def update(self):
         # 每个episode结束，清零total_reward
         print('episode_total_reward:', self.total_reward)
+
+        # todo: fix this part
+        # reduce laerning rate after certain episodes
         if self.total_reward > 1200:
             self.learning_rate = 1e-4
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.learning_rate)
 
+        # episode reward
         self.episode_reward += self.total_reward
+
+        # store reward of each episode
+        self.writer.add_scalar('episode_reward', self.episode_reward, self.update_count)
+        # calculate mean episode reward each 10 episodes
         self.total_reward = 0.0
         self.episode_index += 1
         if self.episode_index % 10 == 0:
@@ -248,23 +261,21 @@ class DQNAlgorithm(object):
 
     def save_net(self):
         """
-        Save parametrs of the NN
+        Save model parameters.
+        """
 
+        """
         todo: add checkpoint
         reference:
         if not os.path.isdir("./models/checkpoint"):
             os.mkdir("./models/checkpoint")
         torch.save(checkpoint, './models/checkpoint/ckpt_best_%s.pth' % (str(epoch)))
-
         """
 
-        # add tags for current parameters
-        # if given_name:
-        #     save_dir = save_dir + given_name + '/'
-
+        # todo: use specified name
         try:
-            torch.save(self.eval_net.state_dict(), save_dir+'dqn.pth')
-            print('Net is saved to ', save_dir+'dqn.pth')
+            torch.save(self.eval_net.state_dict(), self.model_path+self.name+'.pth')
+            print('Net is saved.')
         except Exception as e:
             print(type(e))
             print("Net saving FAILS!")
@@ -274,8 +285,9 @@ class DQNAlgorithm(object):
         Load previous NN parameters.
         """
         try:
-            self.eval_net.load_state_dict(torch.load(save_dir + 'dqn.pth'))
-            self.target_net.load_state_dict(torch.load(save_dir + 'dqn.pth'))
+            self.eval_net.load_state_dict(torch.load(self.model_path+self.name+'.pth'))
+            self.target_net.load_state_dict(torch.load(self.model_path+self.name+'.pth'))
+            print('Load Net successfully.')
         except:
             print("Net loading FAILS!")
 
@@ -284,7 +296,6 @@ def test():
     """
     Test RL module.
     """
-
     pass
 
 

@@ -185,7 +185,7 @@ def get_rotation_matrix_2D(transform):
 
 
 # paras for drl training
-EPISODES = 10
+EPISODES = 20
 
 # default junction right turn scenario paras
 scenario_para_dict = {
@@ -856,13 +856,8 @@ class ScenarioEnv(object):
 
             # use a flag to decide to train/run
             finetune = 1  # default is to train without previous weight
-            if finetune:
-                try:
-                    # train without weights
-                    self.agent_algorithm.load_net()
-                    print('Load Net successfully.')
-                except:
-                    print("Fail to load weight.")
+            if finetune:  # train without weights
+                self.agent_algorithm.load_net()
 
         # set algorithm module to agent instance
         self.agent_instance.set_algorithm(self.agent_algorithm)
@@ -1173,6 +1168,8 @@ class ScenarioEnv(object):
                 return
             # self.world.tick()
 
+        # todo: add option to control net save
+        # ref on InfoGAIL
         self.agent_algorithm.save_net()
         print("==================================================")
         print("Net is saved")
