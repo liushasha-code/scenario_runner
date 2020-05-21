@@ -171,7 +171,7 @@ class DQNAlgorithm(object):
 
         # if True:  # for debug
         #     print("greedy policy")
-        if np.random.rand() <= self.episilo:  # greedy policy
+        if np.random.rand() <= self.epsilon:  # greedy policy
             action_value = self.eval_net.forward(state)
             action_value = action_value.to("cpu")
             action = torch.max(action_value, 1)[1].data.numpy()
@@ -184,13 +184,22 @@ class DQNAlgorithm(object):
     def action_reward(self, reward):
         self.reward = reward
 
-    def change_rate(self, episode_index):
+    def get_episode_index(self, episode_index):
+        """
+        Get current episode index from RL env.
+        """
         self.episode = episode_index
-        epsilo_start = 0.85
-        epsilo_final = 0.95
-        epsilo_decay = 100
 
-        self.episilo = epsilo_start + (epsilo_final - epsilo_start) * math.exp(-1. * episode_index / epsilo_decay)
+    def change_rate(self, episode_index):
+        """
+        Change greedy action percentage with respect to episode
+        """
+        self.episode = episode_index
+        epsilon_start = 0.75
+        epsilon_final = 0.95
+        epsilon_decay = 100
+
+        self.epsilon = epsilon_start + (epsilon_final - epsilon_start) * math.exp(-1. * episode_index / epsilon_decay)
 
     def store_transition(self, transition):
         index = self.memory_counter % self.capacity
@@ -202,8 +211,7 @@ class DQNAlgorithm(object):
         # 每个episode结束，清零total_reward
         print('episode_total_reward:', self.total_reward)
 
-        # todo: fix this part
-        # reduce laerning rate after certain episodes
+        # reduce learning rate
         if self.total_reward > 1200:
             self.learning_rate = 1e-4
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.learning_rate)
@@ -287,9 +295,9 @@ class DQNAlgorithm(object):
         try:
             self.eval_net.load_state_dict(torch.load(self.model_path+self.name+'.pth'))
             self.target_net.load_state_dict(torch.load(self.model_path+self.name+'.pth'))
-            print('Load Net successfully.')
+            print('Load NN dict successfully.')
         except:
-            print("Net loading FAILS!")
+            print("FAIL to load NN dict.")
 
 
 def test():

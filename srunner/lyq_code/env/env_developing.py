@@ -184,17 +184,6 @@ def get_rotation_matrix_2D(transform):
     return rotation_matrix_2D
 
 
-# paras for drl training
-EPISODES = 20
-
-# default junction right turn scenario paras
-scenario_para_dict = {
-    'map': "Town03",
-    'start_point': np.array([53.0, 128.0, 1.0]),
-    'end_point': np.array([5.24, 92.28, 1.0]),
-}
-
-
 class CollisionSensor(object):
     def __init__(self, parent_actor):
         self.sensor = None
@@ -228,10 +217,25 @@ class CollisionSensor(object):
             self.history.pop(0)
 
 
+# paras for drl training
+EPISODES = 10
+
+# default junction right turn scenario paras
+scenario_para_dict = {
+    'map': "Town03",
+    'start_point': np.array([53.0, 128.0, 1.0]),
+    'end_point': np.array([5.24, 92.28, 1.0]),
+}
+
+
 class ScenarioEnv(object):
     """
     Provisional code to evaluate AutonomousAgent performance
     """
+
+    # identify if training or evaluating
+    training_process = True
+
     MAX_ALLOWED_RADIUS_SENSOR = 5.0
     SECONDS_GIVEN_PER_METERS = 0.25
     MAX_CONNECTION_ATTEMPTS = 5
@@ -995,7 +999,7 @@ class ScenarioEnv(object):
         """
         done_flag = False
 
-        reward = 0.
+        reward = 0.  # episode reward
 
         # collision reward
         penalty_collision = -10000.0
@@ -1131,6 +1135,12 @@ class ScenarioEnv(object):
         # todo: add API option to select if update, i.e. finetune option
         self.agent_instance.algorithm.update()
 
+        # save net periodically
+        epi_interval = 50
+        if self.training_process:
+            if i % epi_interval == 0:
+                self.agent_algorithm.save_net()
+
         # test_return = self.agent_instance.algorithm.update()
         # print('d')
         # if self.agent_instance.algorithm.update():
@@ -1144,6 +1154,9 @@ class ScenarioEnv(object):
         #    sys.exit(-1)
 
         # build the master scenario based on the route and the target.
+
+        # high reward NN list
+        high_reward = []
 
         # train for EPISODES times
         for i in range(EPISODES):
@@ -1166,13 +1179,22 @@ class ScenarioEnv(object):
             # main loop!
             if self.run_route(self.route):
                 return
-            # self.world.tick()
 
-        # todo: add option to control net save
-        # ref on InfoGAIL
+
+
+            # todo:
+            # save NN which has a high episode reward
+            for epi_reward in :
+                if reward >= epi_reward
+            if high_reward
+            self
+
+
+
+
         self.agent_algorithm.save_net()
         print("==================================================")
-        print("Net is saved")
+        print("Net is finsished")
         print("==================================================")
 
     def run(self, args):
