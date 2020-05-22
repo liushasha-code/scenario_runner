@@ -85,10 +85,15 @@ class RouteManager:
         """"""
         pass
 
-    def generate_route(self):
-        """"""
+    def generate_route(self, hop_resolution):
+        """
+        Generate route for
+        :param hop_resolution:
+        :return:
+        """
 
-        dao = GlobalRoutePlannerDAO(world.get_map(), hop_resolution)
+
+        dao = GlobalRoutePlannerDAO(self.world.get_map(), hop_resolution)
         grp = GlobalRoutePlanner(dao)
         grp.setup()
         # Obtain route plan
