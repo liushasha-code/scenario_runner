@@ -214,6 +214,10 @@ class DQNAlgorithm(object):
         # reduce learning rate
         if self.total_reward > 1200:
             self.learning_rate = 1e-4
+
+
+
+
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.learning_rate)
 
         # episode reward
@@ -282,7 +286,10 @@ class DQNAlgorithm(object):
 
         # todo: use specified name
         try:
-            torch.save(self.eval_net.state_dict(), self.model_path+self.name+'.pth')
+            # torch.save(self.eval_net.state_dict(), self.model_path+self.name+'.pth')
+
+            torch.save(self.eval_net.state_dict(), self.model_path+self.name+'_epi_'+str(self.episode)+'.pth')
+
             print('Net is saved.')
         except Exception as e:
             print(type(e))

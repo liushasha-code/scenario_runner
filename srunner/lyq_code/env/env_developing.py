@@ -94,8 +94,7 @@ from srunner.lyq_code.env.env_module.TrafficFlow import TrafficFlow  # class nam
 # self defined util
 from srunner.util_development.util import *
 from srunner.util_development.util import coords_trans
-# easy test
-
+# from srunner.util_development.scenario_helper_modified import get_distance_along_route
 
 # from srunner.challenge.autoagents.RLagent_junction import RLAgent
 # from srunner.challenge.autoagents.RLagent_lon import RLAgent
@@ -184,6 +183,104 @@ def get_rotation_matrix_2D(transform):
     return rotation_matrix_2D
 
 
+def get_distance_along_route(route, target_location):
+    """
+    Calculate the distance of the given location along the route
+
+    Note: If the location is not along the route, the route length will be returned
+    """
+
+    wmap = CarlaDataProvider.get_map()
+    covered_distance = 0.0
+    prev_position = None
+    found = False
+
+    # Don't use the input location, use the corresponding wp as location
+    target_location_from_wp = wmap.get_waypoint(target_location).transform.location
+
+    for position, _ in route:
+
+        position = position.location
+
+        location = target_location_from_wp
+
+        # Don't perform any calculations for the first route point
+        if not prev_position:
+            prev_position = position
+            continue
+
+        # Calculate distance between previous and current route point
+        interval_length_squared = ((prev_position.x - position.x) ** 2) + ((prev_position.y - position.y) ** 2)
+        distance_squared = ((location.x - prev_position.x) ** 2) + ((location.y - prev_position.y) ** 2)
+
+        # Close to the current position? Stop calculation
+        if distance_squared < 0.01:
+            break
+
+        if distance_squared < 400 and not distance_squared < interval_length_squared:
+            # Check if a neighbor lane is closer to the route
+            # Do this only in a close distance to correct route interval, otherwise the computation load is too high
+            starting_wp = wmap.get_waypoint(location)
+            wp = starting_wp.get_left_lane()
+            while wp is not None:
+                new_location = wp.transform.location
+                new_distance_squared = ((new_location.x - prev_position.x) ** 2) + (
+                    (new_location.y - prev_position.y) ** 2)
+
+                if np.sign(starting_wp.lane_id) != np.sign(wp.lane_id):
+                    break
+
+                if new_distance_squared < distance_squared:
+                    distance_squared = new_distance_squared
+                    location = new_location
+                else:
+                    break
+
+                wp = wp.get_left_lane()
+
+            wp = starting_wp.get_right_lane()
+            while wp is not None:
+                new_location = wp.transform.location
+                new_distance_squared = ((new_location.x - prev_position.x) ** 2) + (
+                    (new_location.y - prev_position.y) ** 2)
+
+                if np.sign(starting_wp.lane_id) != np.sign(wp.lane_id):
+                    break
+
+                if new_distance_squared < distance_squared:
+                    distance_squared = new_distance_squared
+                    location = new_location
+                else:
+                    break
+
+                wp = wp.get_right_lane()
+
+        if distance_squared < interval_length_squared:
+            # The location could be inside the current route interval, if route/lane ids match
+            # Note: This assumes a sufficiently small route interval
+            # An alternative is to compare orientations, however, this also does not work for
+            # long route intervals
+
+            curr_wp = wmap.get_waypoint(position)
+            prev_wp = wmap.get_waypoint(prev_position)
+            wp = wmap.get_waypoint(location)
+
+            if prev_wp and curr_wp and wp:
+                if wp.road_id == prev_wp.road_id or wp.road_id == curr_wp.road_id:
+                    # Roads match, now compare the sign of the lane ids
+                    if (np.sign(wp.lane_id) == np.sign(prev_wp.lane_id) or
+                            np.sign(wp.lane_id) == np.sign(curr_wp.lane_id)):
+                        # The location is within the current route interval
+                        covered_distance += math.sqrt(distance_squared)
+                        found = True
+                        break
+
+        covered_distance += math.sqrt(interval_length_squared)
+        prev_position = position
+
+    return covered_distance, found
+
+
 class CollisionSensor(object):
     def __init__(self, parent_actor):
         self.sensor = None
@@ -218,7 +315,7 @@ class CollisionSensor(object):
 
 
 # paras for drl training
-EPISODES = 10
+EPISODES = 20
 
 # default junction right turn scenario paras
 scenario_para_dict = {
@@ -233,8 +330,9 @@ class ScenarioEnv(object):
     Provisional code to evaluate AutonomousAgent performance
     """
 
-    # identify if training or evaluating
-    training_process = True
+    # flags that identify if loading and saving dict
+    if_load_dict = False
+    if_save_dict = True
 
     MAX_ALLOWED_RADIUS_SENSOR = 5.0
     SECONDS_GIVEN_PER_METERS = 0.25
@@ -335,6 +433,9 @@ class ScenarioEnv(object):
         self.gps_route, self.route = self.calculate_route()
         self.get_junction_frame()
 
+        # get length of route
+        # self.route = calculate_route_length
+
         self.route_length = 0.0
         self.route_timeout = self.estimate_route_timeout()
 
@@ -344,6 +445,19 @@ class ScenarioEnv(object):
 
         # trafficflow module
         self.trafficflow = TrafficFlow(self.client, self.world)
+
+        # route completion percentage
+        self.finished_length = 0.0
+
+    def estimate_route_timeout(self):
+        """"""
+        prev_point = self.route[0][0]
+        for current_point, _ in self.route[1:]:
+            dist = current_point.location.distance(prev_point.location)
+            self.route_length += dist
+            prev_point = current_point
+
+        return int(self.SECONDS_GIVEN_PER_METERS * self.route_length)
 
     def reach_ending_point(self):
         return False
@@ -766,17 +880,6 @@ class ScenarioEnv(object):
 
         return scenario_instance_vec
 
-    def estimate_route_timeout(self):
-        self.route_length = 0.0  # in meters
-
-        prev_point = self.route[0][0]
-        for current_point, _ in self.route[1:]:
-            dist = current_point.location.distance(prev_point.location)
-            self.route_length += dist
-            prev_point = current_point
-
-        return int(self.SECONDS_GIVEN_PER_METERS * self.route_length)
-
     def route_is_running(self):
         """
             Test if the route is still running.
@@ -859,8 +962,7 @@ class ScenarioEnv(object):
             # self.agent_algorithm.load_net()
 
             # use a flag to decide to train/run
-            finetune = 1  # default is to train without previous weight
-            if finetune:  # train without weights
+            if self.if_load_dict:  # train without weights
                 self.agent_algorithm.load_net()
 
         # set algorithm module to agent instance
@@ -1002,7 +1104,7 @@ class ScenarioEnv(object):
         reward = 0.  # episode reward
 
         # collision reward
-        penalty_collision = -10000.0
+        penalty_collision = -1000.0
         if self.sensor is not None:
             if len(self.sensor.history) > 0:
                 reward += penalty_collision
@@ -1014,14 +1116,18 @@ class ScenarioEnv(object):
             reward += penalty_offset
             done_flag = True
 
-        # todo: add reward of route completion
-        #
+        # Reward of route completion
+        full_reward = 1000.0
+        finished_length, if_in_route = get_distance_along_route(self.route, self.ego_vehicle.get_location())
+        route_reward = full_reward * (finished_length - self.finished_length) / self.route_length
+        self.finished_length = finished_length  # update
+        reward += route_reward
 
-        # speed
+        # speed reward
         target_speed = 5.0  # meters per second
         vel = self.ego_vehicle.get_velocity()
         speed = math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
-        reward -= abs(target_speed - speed)
+        reward -= (target_speed - speed)  # above target speed to get a positive reward
 
         # time spent
         penalty_time = -1.0
@@ -1034,9 +1140,6 @@ class ScenarioEnv(object):
         # print('route is running', self.route_is_running())
         GameTime.restart()
         last_time = GameTime.get_time()
-        steer = 0.0
-        last_step_loaction_x = self.route[0][0].location.x
-        last_step_loaction_y = self.route[0][0].location.y
         print('timestamp: ', last_time)
 
         # for debug RL lon
@@ -1137,14 +1240,36 @@ class ScenarioEnv(object):
 
         # save net periodically
         epi_interval = 50
-        if self.training_process:
-            if i % epi_interval == 0:
+        if self.if_save_dict:
+            if self.agent_algorithm.episode % epi_interval == 0:
                 self.agent_algorithm.save_net()
 
         # test_return = self.agent_instance.algorithm.update()
         # print('d')
         # if self.agent_instance.algorithm.update():
         #     return
+
+    def save_best_model(self):
+        """
+        Save some best model in training process.
+        :return:
+        """
+        number = 20
+
+        if best_eval.current_dev_score >= best_eval.best_dev_score:
+            if not os.path.isdir(save_dir): os.makedirs(save_dir)
+            model_name = "{}.pt".format(model_name)
+            save_path = os.path.join(save_dir, model_name)
+            print("save best model to {}".format(save_path))
+            # if os.path.exists(save_path):  os.remove(save_path)
+            output = open(save_path, mode="wb")
+            torch.save(model.state_dict(), output)
+            # torch.save(model.state_dict(), save_path)
+            output.close()
+            best_eval.early_current_patience = 0
+
+
+        self.agent_algorithm.save_net()
 
     def load_environment_and_run(self, args, world_annotations=''):
 
@@ -1155,8 +1280,8 @@ class ScenarioEnv(object):
 
         # build the master scenario based on the route and the target.
 
-        # high reward NN list
-        high_reward = []
+        # todo: save best NN
+        # high_reward = []
 
         # train for EPISODES times
         for i in range(EPISODES):
@@ -1180,21 +1305,9 @@ class ScenarioEnv(object):
             if self.run_route(self.route):
                 return
 
-
-
-            # todo:
-            # save NN which has a high episode reward
-            for epi_reward in :
-                if reward >= epi_reward
-            if high_reward
-            self
-
-
-
-
-        self.agent_algorithm.save_net()
+        # self.agent_algorithm.save_net()
         print("==================================================")
-        print("Net is finsished")
+        print("Training is finished")
         print("==================================================")
 
     def run(self, args):

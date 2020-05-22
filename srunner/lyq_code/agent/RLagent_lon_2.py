@@ -514,7 +514,7 @@ class RLAgent:
 
             npc_state[key] = state
 
-        print('NPC state', npc_state)
+        # print('NPC state', npc_state)
         # complete state
         state = ego_state + npc_state['left'] + npc_state['straight'] + npc_state['right']
 
