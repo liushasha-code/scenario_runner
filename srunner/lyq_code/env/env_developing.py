@@ -315,7 +315,7 @@ class CollisionSensor(object):
 
 
 # paras for drl training
-EPISODES = 20
+EPISODES = 1000
 
 # default junction right turn scenario paras
 scenario_para_dict = {
@@ -331,8 +331,13 @@ class ScenarioEnv(object):
     """
 
     # flags that identify if loading and saving dict
-    if_load_dict = False
-    if_save_dict = True
+    #train
+    # if_load_dict = False
+    # if_save_dict = True
+
+    # eval
+    if_load_dict = True
+    if_save_dict = False
 
     MAX_ALLOWED_RADIUS_SENSOR = 5.0
     SECONDS_GIVEN_PER_METERS = 0.25
@@ -1130,8 +1135,8 @@ class ScenarioEnv(object):
         reward -= (target_speed - speed)  # above target speed to get a positive reward
 
         # time spent
-        penalty_time = -1.0
-        reward += penalty_time
+        # penalty_time = -1.0
+        # reward += penalty_time
 
         return reward, done_flag
 
@@ -1161,8 +1166,11 @@ class ScenarioEnv(object):
             # update traffic flow
             self.trafficflow.run_step()
 
-            # get npc vehicle state for ego vehicle
+            # get npc vehicles for state representation
             near_npc_dict = self.trafficflow.get_near_npc()
+            self.agent_instance.get_near_npc(near_npc_dict)
+
+            npc_dict = self.trafficflow.get_npc_dict()
             self.agent_instance.get_near_npc(near_npc_dict)
 
             # get action
@@ -1249,27 +1257,27 @@ class ScenarioEnv(object):
         # if self.agent_instance.algorithm.update():
         #     return
 
-    def save_best_model(self):
-        """
-        Save some best model in training process.
-        :return:
-        """
-        number = 20
-
-        if best_eval.current_dev_score >= best_eval.best_dev_score:
-            if not os.path.isdir(save_dir): os.makedirs(save_dir)
-            model_name = "{}.pt".format(model_name)
-            save_path = os.path.join(save_dir, model_name)
-            print("save best model to {}".format(save_path))
-            # if os.path.exists(save_path):  os.remove(save_path)
-            output = open(save_path, mode="wb")
-            torch.save(model.state_dict(), output)
-            # torch.save(model.state_dict(), save_path)
-            output.close()
-            best_eval.early_current_patience = 0
-
-
-        self.agent_algorithm.save_net()
+    # def save_best_model(self):
+    #     """
+    #     Save some best model in training process.
+    #     :return:
+    #     """
+    #     number = 20
+    #
+    #     if best_eval.current_dev_score >= best_eval.best_dev_score:
+    #         if not os.path.isdir(save_dir): os.makedirs(save_dir)
+    #         model_name = "{}.pt".format(model_name)
+    #         save_path = os.path.join(save_dir, model_name)
+    #         print("save best model to {}".format(save_path))
+    #         # if os.path.exists(save_path):  os.remove(save_path)
+    #         output = open(save_path, mode="wb")
+    #         torch.save(model.state_dict(), output)
+    #         # torch.save(model.state_dict(), save_path)
+    #         output.close()
+    #         best_eval.early_current_patience = 0
+    #
+    #
+    #     self.agent_algorithm.save_net()
 
     def load_environment_and_run(self, args, world_annotations=''):
 

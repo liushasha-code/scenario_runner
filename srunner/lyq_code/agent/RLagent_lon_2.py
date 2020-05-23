@@ -89,7 +89,7 @@ class RLAgent:
         self.action_space = [[1.0, 0.0], [0.0, 0.0], [0.0, 1.0]]
         self.action_dim = len(self.action_space)
 
-        # todo: calculate state dimension automaticlly
+        # todo: calculate state dimension automatically
         self.state_dim = 20
 
         # image index???
@@ -127,7 +127,7 @@ class RLAgent:
         # self.set_lateral_controller()
 
         # near npc vehicle state
-        self.near_npc_dict = None
+        self.npc_dict = None
 
     # ==================================================
     # interaction API
@@ -155,12 +155,12 @@ class RLAgent:
         self.reward = reward
         print('reward:', self.reward)
 
-    def get_near_npc(self, near_npc_dict):
+    def get_npc(self, npc_dict):
         """
         Get dict contains near npc info from env.
         Structure of dict is contained in TrafficFlow module.
         """
-        self.near_npc_dict = near_npc_dict
+        self.npc_dict = npc_dict
 
     # function module
     def set_lateral_controller(self, args_lateral=None):
@@ -469,18 +469,60 @@ class RLAgent:
 
         return lat_offset, diversion_angle
 
+    @staticmethod
+    def get_single_vehicle_state(vehicle):
+        """
+        Get state of single vehicle.
+        :return: state
+        """
+        location = vehicle.get_transform().location
+        location = [location.x, location.y]
+
+        yaw = np.deg2rad(vehicle.get_transform().rotation.yaw)  # in degrees
+        orientation = [np.cos(yaw), np.sin(yaw)]  # in cos and sin
+
+        velocity = vehicle.get_velocity()
+        velocity = [velocity.x, velocity.y]  # in meters per second
+
+        state = location + orientation + velocity
+        return state
+
+    def select_npc_vehicles(self):
+        """
+        Get desired npc vehicles for state representation.
+
+        This version will return 6 vehicles in total, 2 for each diorection.
+
+        :return: npc_dict
+        """
+
+        self.npc_dict
+
+
+
+
+        npc_dict =
+
+        return npc_dict
+
     def get_state(self):
         """
         Get state for RL module.
-        State consists of ego state and npc state.
-        """
-        # ego vehicle
-        transform = self.ego_vehicle.get_transform()
-        loc = [transform.location.x, transform.location.y, transform.rotation.yaw]
-        velo = [self.ego_vehicle.get_velocity().x, self.ego_vehicle.get_velocity().y]
-        ego_state = loc + velo
+        State consists of:
+        1. information of ego and npc vehicles.
+        2. curve of route
+        todo: add curve of route
 
-        # npc vehicle
+        """
+        # state of ego vehicle
+        ego_state = self.get_single_vehicle_state(self.ego_vehicle)
+
+        # state of npc vehicles
+        for actors
+
+
+
+
         npc_state = {
             'left': [],
             'right': [],
@@ -491,9 +533,10 @@ class RLAgent:
             if self.near_npc_dict[key]:
                 npc = self.near_npc_dict[key][0]
 
-                loc = [npc.get_transform().location.x, npc.get_transform().location.y]
-                rot = [npc.get_transform().rotation.yaw]
-                velo = [npc.get_velocity().x, npc.get_velocity().y]
+                location = [npc.get_transform().location.x, npc.get_transform().location.y]
+                yaw = npc.get_transform().rotation.yaw  # in degrees
+                orientation = [np.cos(np.deg2rad(yaw)), np.sin(np.deg2rad(yaw))]  # in cos and sin
+                velocity = [npc.get_velocity().x, npc.get_velocity().y]  # in meters per second
 
                 # todo: normalization
                 # norm_para = [18.0, 1.0, 30]  # meter, degrees, m/s
@@ -501,7 +544,7 @@ class RLAgent:
                 # rot = rot / norm_para[1]
                 # velo = velo / norm_para[2]
 
-                state = loc + rot + velo
+                state = location + orientation + velocity
 
             else:
                 # todo: this criterias needs to modified if scenario changes

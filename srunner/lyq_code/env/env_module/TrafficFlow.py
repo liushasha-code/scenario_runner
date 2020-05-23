@@ -526,9 +526,8 @@ class TrafficFlow:
 
     def get_near_npc(self):
         """
-        Get near npc vehicles for state representation.
-
-        Updated when calling
+        Get npc vehicles which is in junction.
+        actor list will be updated each time method is called.
         """
         near_npc_dict = {
             'left': [],
@@ -544,6 +543,30 @@ class TrafficFlow:
                     near_npc_dict[key].append(actor)
 
         return near_npc_dict
+
+    def get_near_npc2(self):
+        """"""
+
+
+
+        return npc_dict
+
+    def get_npc_dict(self):
+        """
+        Get npc vehicles of all 3 direction.
+        :return: npc dict
+        """
+        npc_dict = {
+            'left': [],
+            'right': [],
+            'straight': [],
+        }
+
+        for key in self.npc_info:
+            for actor in self.npc_info[key]['actor_list']:
+                npc_dict[key].append(actor)
+
+        return npc_dict
 
     def __call__(self):
         """"""
