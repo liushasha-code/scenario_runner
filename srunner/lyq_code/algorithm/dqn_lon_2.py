@@ -37,24 +37,27 @@ import carla
 
 import math
 import numpy as np
-import datetime
+# import datetime
 from collections import namedtuple
 import torch
 import torch.nn as nn
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from tensorboardX import SummaryWriter
 
+from datetime import datetime
+TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
+
 seed = 1
 torch.manual_seed(seed)
 
 # date info, ie: '20200509'
-date = datetime.date.today().strftime('%Y%m%d')
+# date = datetime.date.today().strftime('%Y%m%d')
 
 Transition = namedtuple('Transition', ['state', 'action', 'reward', 'next_state'])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-given_name = 'sole_lon_control'
+# given_name = 'sole_lon_control'
 
 
 class Net(nn.Module):
@@ -119,7 +122,8 @@ class DQNAlgorithm(object):
     # dict saving path
     model_path = '../model_dict/'
     # log path
-    log_path = '/home/lyq/RL_TrainingLog'  # caution: using a absolute path
+    # caution: using a absolute path
+    log_path = '/home/lyq/RL_TrainingLog' + TIMESTAMP
 
     # name of current model to save
     name = 'dqn'
@@ -211,12 +215,10 @@ class DQNAlgorithm(object):
         # 每个episode结束，清零total_reward
         print('episode_total_reward:', self.total_reward)
 
+        # todo fix changing learning rate
         # reduce learning rate
         if self.total_reward > 1200:
             self.learning_rate = 1e-4
-
-
-
 
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=self.learning_rate)
 

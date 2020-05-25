@@ -315,7 +315,7 @@ class CollisionSensor(object):
 
 
 # paras for drl training
-EPISODES = 1000
+EPISODES = 20
 
 # default junction right turn scenario paras
 scenario_para_dict = {
@@ -332,12 +332,12 @@ class ScenarioEnv(object):
 
     # flags that identify if loading and saving dict
     #train
-    # if_load_dict = False
-    # if_save_dict = True
+    if_load_dict = False
+    if_save_dict = True
 
     # eval
-    if_load_dict = True
-    if_save_dict = False
+    # if_load_dict = True
+    # if_save_dict = False
 
     MAX_ALLOWED_RADIUS_SENSOR = 5.0
     SECONDS_GIVEN_PER_METERS = 0.25
@@ -1167,11 +1167,10 @@ class ScenarioEnv(object):
             self.trafficflow.run_step()
 
             # get npc vehicles for state representation
-            near_npc_dict = self.trafficflow.get_near_npc()
-            self.agent_instance.get_near_npc(near_npc_dict)
+            # near_npc_dict = self.trafficflow.get_near_npc()
+            near_npc_dict = self.trafficflow.get_near_npc2()
 
-            npc_dict = self.trafficflow.get_npc_dict()
-            self.agent_instance.get_near_npc(near_npc_dict)
+            self.agent_instance.get_npc(near_npc_dict)
 
             # get action
             ego_action = self.agent_instance()
@@ -1247,9 +1246,9 @@ class ScenarioEnv(object):
         self.agent_instance.algorithm.update()
 
         # save net periodically
-        epi_interval = 50
+        epi_interval = 2
         if self.if_save_dict:
-            if self.agent_algorithm.episode % epi_interval == 0:
+            if (self.agent_algorithm.episode+1) % epi_interval == 0:
                 self.agent_algorithm.save_net()
 
         # test_return = self.agent_instance.algorithm.update()

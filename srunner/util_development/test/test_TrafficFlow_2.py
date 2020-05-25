@@ -97,6 +97,8 @@ class TestTrafficFlow(BasicEnv):
         # set spectator on the junction
         self.set_spectator(carla.Transform(junction_center, start_rotation), view=1, h=100)
 
+        junction = self.trafficflow.get_junction_easy()
+
         count = 0
         while True:
 

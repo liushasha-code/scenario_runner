@@ -70,6 +70,7 @@ class RLAgent:
     """
     Package methods of getting state and reward in RL training.
     """
+
     def __init__(self, world, episode_index):
 
         self.world = None  # need to manually set world
@@ -90,7 +91,7 @@ class RLAgent:
         self.action_dim = len(self.action_space)
 
         # todo: calculate state dimension automatically
-        self.state_dim = 20
+        self.state_dim = 42
 
         # image index???
         self.index = 0
@@ -487,24 +488,6 @@ class RLAgent:
         state = location + orientation + velocity
         return state
 
-    def select_npc_vehicles(self):
-        """
-        Get desired npc vehicles for state representation.
-
-        This version will return 6 vehicles in total, 2 for each diorection.
-
-        :return: npc_dict
-        """
-
-        self.npc_dict
-
-
-
-
-        npc_dict =
-
-        return npc_dict
-
     def get_state(self):
         """
         Get state for RL module.
@@ -517,49 +500,53 @@ class RLAgent:
         # state of ego vehicle
         ego_state = self.get_single_vehicle_state(self.ego_vehicle)
 
-        # state of npc vehicles
-        for actors
-
-
-
-
+        # state of npc vehicle
         npc_state = {
-            'left': [],
-            'right': [],
-            'straight': [],
+            'left': {
+                'actor_list': [],
+                'state_list': [],
+                'zero_state': [5.76, 175.50,
+                               np.cos(np.deg2rad(270.)), np.sin(np.deg2rad(270.)),
+                               0, 0],
+            },
+            'right': {
+                'actor_list': [],
+                'state_list': [],
+                'zero_state': [-6.26, 90.84,
+                               np.cos(np.deg2rad(90.)), np.sin(np.deg2rad(90.)),
+                               0, 0],
+            },
+            'straight': {
+                'actor_list': [],
+                'state_list': [],
+                'zero_state': [-46.92, 135.03,
+                               np.cos(np.deg2rad(0.)), np.sin(np.deg2rad(0.)),
+                               0, 0],
+            },
         }
 
-        for key in self.near_npc_dict:
-            if self.near_npc_dict[key]:
-                npc = self.near_npc_dict[key][0]
+        # NPC vehicle number of each traffic flow
+        N = 2
 
-                location = [npc.get_transform().location.x, npc.get_transform().location.y]
-                yaw = npc.get_transform().rotation.yaw  # in degrees
-                orientation = [np.cos(np.deg2rad(yaw)), np.sin(np.deg2rad(yaw))]  # in cos and sin
-                velocity = [npc.get_velocity().x, npc.get_velocity().y]  # in meters per second
+        for key in self.npc_dict:
 
-                # todo: normalization
-                # norm_para = [18.0, 1.0, 30]  # meter, degrees, m/s
-                # loc = loc / norm_para[0]
-                # rot = rot / norm_para[1]
-                # velo = velo / norm_para[2]
+            zero_state = npc_state[key]['zero_state']
+            npc_state[key]['state_list'] = [zero_state] * N
 
-                state = location + orientation + velocity
+            for ids, actor in enumerate(self.npc_dict[key]):
+                if ids <= N:
+                    npc_state[key]['state_list'][ids] = self.get_single_vehicle_state(actor)
+                else:
+                    break
 
-            else:
-                # todo: this criterias needs to modified if scenario changes
-                if key == 'left':
-                    state = [5.76, 175.50] + [270.0] + [0.0, -5.0]
-                elif key == 'straight':
-                    state = [-6.26, 90.84] + [0.0] + [5.0, 0.0]
-                elif key == 'right':
-                    state = [-46.92, 135.03] + [90.0] + [0.0, 5.0]
-
-            npc_state[key] = state
-
-        # print('NPC state', npc_state)
-        # complete state
-        state = ego_state + npc_state['left'] + npc_state['straight'] + npc_state['right']
+        # state in total
+        state = ego_state
+        for item in npc_state['left']['state_list']:
+            state += item
+        for item in npc_state['straight']['state_list']:
+            state += item
+        for item in npc_state['right']['state_list']:
+            state += item
 
         return state
 
@@ -717,6 +704,8 @@ class RLAgent:
         # state is a list consists of float value
         state = self.get_state()
 
+        print('state length: ', len(state))
+
         if self.state is None:
             self.state = state
         else:
@@ -743,4 +732,3 @@ class RLAgent:
         print('steer:', control.steer)
 
         return control
-

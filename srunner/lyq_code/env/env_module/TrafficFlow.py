@@ -150,6 +150,8 @@ class TrafficFlow:
         junction_waypoint = self.map.get_waypoint(junction_center)
         self.junction = junction_waypoint.get_junction()
 
+        return self.junction
+
     def get_npc_list(self):
         """
         Get npc list spawned by traffic flow module
@@ -524,6 +526,31 @@ class TrafficFlow:
         else:
             return False
 
+    @staticmethod
+    def junction_area_contains(location, bbox):
+        """
+        Similar to staticmethod: junction_contains
+
+        Check if a location(vehicle object) is contained in a junction area.
+
+        todo 1. consider a rotated junction, with a yaw angle
+        todo 2. plot area box
+
+        :param location: location point to check
+        :param bbox: junction bounding box(carla.BoundingBox)
+        :return: bool
+        """
+        expanded_distance = 10.0
+
+        vector = location - bbox.location  # location relative to junction center
+        extent = bbox.extent
+
+        if extent.x+expanded_distance >= vector.x >= -extent.x-expanded_distance and \
+                extent.y+expanded_distance >= vector.y >= -extent.y-expanded_distance:
+            return True
+        else:
+            return False
+
     def get_near_npc(self):
         """
         Get npc vehicles which is in junction.
@@ -545,11 +572,32 @@ class TrafficFlow:
         return near_npc_dict
 
     def get_near_npc2(self):
-        """"""
+        """
+        Get 2 npc vehicles of each traffic flow in expanded junction area
 
+        todo merge this 2 methods.
+        :return:
+        """
+        near_npc_dict = {
+            'left': [],
+            'right': [],
+            'straight': [],
+        }
 
+        for key in self.npc_info:
+            for num, actor in enumerate(self.npc_info[key]['actor_list']):
+                # check if vehicle is in the expanded junction area
+                if self.junction_area_contains(actor.get_location(), self.junction.bounding_box):
+                    # self.npc_info[key]['nearby_npc'].append(actor)
+                    near_npc_dict[key].extend(self.npc_info[key]['actor_list'][num:])
+                    break
 
-        return npc_dict
+            # if len(near_npc_dict[key]) < 2:
+            #     # need to check when calling
+            #     if self.npc_info[key]['actor_list'][num+1]:
+            #         near_npc_dict[key].append(self.npc_info[key]['actor_list'][num+1])
+
+        return near_npc_dict
 
     def get_npc_dict(self):
         """
