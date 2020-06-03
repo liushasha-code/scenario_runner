@@ -1,8 +1,7 @@
 """
-Create a test env to test TrafficFlow module.
-"""
+This script is to test basic vehicle dynamics and settings in carla simulator(0.9.8).
 
-from __future__ import print_function
+"""
 
 import glob
 import os
@@ -100,7 +99,6 @@ class TestTrafficFlow(BasicEnv):
         junction = self.trafficflow.get_junction_easy()
 
         count = 0
-
         while True:
 
             # call to run step
