@@ -35,11 +35,40 @@ from srunner.lyq_code.env.BasicEnv import BasicEnv
 class Env(BasicEnv):
     def __init__(self):
         """
-
+        todo add npc vehicle module
         """
+        pass
+
+    def spawn_ego(self):
+        """
+        todo require API design
+
+        :return:
+        """
+        pass
+
+    def spawn_npc(self):
+        """
+        Use local planner to control npc vehicle.
+
+        :return:
+        """
+        pass
+
 
     def run(self):
         """"""
+
+        time_step = 0
+
+
+        while True:
+
+            # ego and npc vehicle control
+            control = self.agent()
+            self.world.tick()
+            time_step += 1
+            print('timestamp')
 
         print('d')
 
