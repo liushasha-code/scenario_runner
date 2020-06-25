@@ -63,3 +63,44 @@ carla 098中，生成actor时有两种函数,分别是
 在carla 098版本中，由于对于碰撞的检测机制不同,生成车辆时需设置一定的初始高度,通常大于１.0即可
 否则会出现由于与地面干涉 无法正确生成车辆的情况
 
+# 3. 删除actor时可能遇到的问题
+## 3.1 有效方法
+
+carla文档中介绍了三种删除actor的方法，以carla 0.9.8版本为例，经过测试和对比，比较直接有效的方法是使用命令
+`carla.client.apply_batch_sync(）`  
+该命令的具体格式详见于[carla文档](https://carla.readthedocs.io/en/latest/python_api/#carlaclient)，命令会返回一个`carla.command.Response`类型的数据，主要用于检查错误，见[文档](https://carla.readthedocs.io/en/latest/python_api/#commandresponse)。  
+
+使用方法举例：  
+```
+# 假设所有要删除的车辆（actor）都保存在delete_list当中
+response_list=self.client.apply_batch_sync([carla.command.DestroyActor(x) for x in delete_list], True)
+
+# 检查是否成功删除了全部车辆
+method_error = response_list[0].has_error()
+if not method_error:
+    print('npc vehicle', delete_list[0].id, "is destroyed")
+
+```
+## 3.2 另外两种方法和问题
+另外补充说明一下其他两种方法，以及可能出现的问题。
+第二种是使用`carla.command.DestroyActor()`命令，例如  
+```
+for x in delete_list:
+    carla.command.DestroyActor(x)
+```  
+包括单独使用命令或者是结合`carla.client.apply_batch()`命令使用
+```
+carla.client.apply_batch([carla.command.DestroyActor(x) for x in delete_list])
+```  
+这种方法在一般情况下能够顺利删除actor，但是在运行中会出现bug，导致carla server的直接崩溃，原因不明。
+
+第二种是使用`carla.actor.destroy()`命令
+```
+for actor in delete_list:
+    actor.destroy()
+```
+这种方法在实验中经常不能正常删除车辆，但并不报错，原因不明。
+
+**相关问题可能和carla底层的C++封装有关，carla的github仓库中有相关的C++代码可以查阅，如果有同学有新的理解欢迎补充！**
+
+
