@@ -36,6 +36,23 @@ from srunner.lyq_code.env.BasicEnv import BasicEnv
 from
 
 
+info_dict = {
+    'scenario_class': 'junction_right_turn',  # or using class code
+    'world_settigns':{},
+    'map': 'Town03',
+    'ego_start_location': [],
+
+
+
+
+
+
+}
+
+
+
+
+
 class ScenarioEnv(BasicEnv):
     max_time = 10000  # seconds
 
@@ -51,6 +68,9 @@ class ScenarioEnv(BasicEnv):
 
         :return:
         """
+
+
+
         pass
 
     def spawn_traffic_flow(self):

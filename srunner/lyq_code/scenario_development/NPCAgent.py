@@ -36,10 +36,30 @@ from agents.navigation.local_planner import LocalPlanner
 
 class BasicAgent():
     def __init__(self):
+
+
         pass
+
 
     def spawn_vehicle(self):
         """"""
+
+        bp = self.blueprint_library.find('vehicle.tesla.model3')
+        if bp.has_attribute('color'):
+            color = '255, 0, 0'  # use string to identify a RGB color
+            bp.set_attribute('color', color)
+
+        if name:
+            bp.set_attribute('role_name', name)  # set actor name
+        # spawn npc vehicle
+        vehicle = self.world.spawn_actor(bp, transform)  # use spawn method
+        self.world.tick()
+        print("Number", vehicle.id, "npc vehicle is spawned.")  # actor id number of this vehicle
+
+        return vehicle
+
+
+
         location =
         blueprint =
 
