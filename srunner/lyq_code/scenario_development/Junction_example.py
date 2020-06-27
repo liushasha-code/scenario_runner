@@ -33,24 +33,27 @@ import traceback
 
 from srunner.lyq_code.env.BasicEnv import BasicEnv
 
-from
-
 
 info_dict = {
-    'scenario_class': 'junction_right_turn',  # or using class code
-    'world_settigns':{},
-    'map': 'Town03',
-    'ego_start_location': [],
+    'scenario_info': {
+        'scenario_classname': 'junction_right_turn',
+        'scenario_code': 'A1_1_1'
 
+    },
+    'world_settings': {
+        'map': 'Town03',
+        'ego_info': {
+            'model': 'lincoln.mkz2017',
+            'start_location': [],
 
+        },
+        'npc_info':{
+            'model': 'tesla.model3',
+            'start_location': [],
 
-
-
-
+        }
+    }
 }
-
-
-
 
 
 class ScenarioEnv(BasicEnv):
@@ -60,7 +63,13 @@ class ScenarioEnv(BasicEnv):
         """
         todo add npc vehicle module
         """
-        pass
+        self.info_dict = {}
+
+    def get_dict(self):
+        """
+        Get info dict describe the scenario.
+        """
+        self.info_dict = info_dict
 
     def spawn_ego(self):
         """
@@ -68,10 +77,22 @@ class ScenarioEnv(BasicEnv):
 
         :return:
         """
+        bp = self.blueprint_library.find('vehicle.tesla.model3')
+        if bp.has_attribute('color'):
+            color = '255, 0, 0'  # use string to identify a RGB color
+            bp.set_attribute('color', color)
+
+        if name:
+            bp.set_attribute('role_name', name)  # set actor name
+        # spawn npc vehicle
+        vehicle = self.world.spawn_actor(bp, transform)  # use spawn method
+        self.world.tick()
+        print("Number", vehicle.id, "npc vehicle is spawned.")  # actor id number of this vehicle
+
+        return vehicle
 
 
-
-        pass
+        self.ego = actor
 
     def spawn_traffic_flow(self):
         """
