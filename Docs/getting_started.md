@@ -22,10 +22,10 @@ Python 3.5. Depending on your Python version, execute:
 
 #Python 2.x
 sudo apt remove python-networkx #if installed, remove old version of networkx
-pip2 install --user py_trees==0.8.3 networkx==2.2 psutil shapely xmlschema==1.0.18
+pip2 install --user -r requirements.txt
 #Python 3.x
 sudo apt remove python3-networkx #if installed, remove old version of networkx
-pip3 install --user py_trees==0.8.3 networkx==2.2 psutil shapely xmlschema
+pip3 install --user -r requirements.txt
 ```
 Note: py-trees newer than v0.8 is *NOT* supported.
 
@@ -93,18 +93,15 @@ More information you can find in [OpenSCENARIO support](openscenario_support.md)
 ## Running route-based scenario (similar to the CARLA AD Challenge)
 To run a route-based scenario, please run the ScenarioRunner as follows:
 ```
-python scenario_runner.py --route <path/to/route-file> <path/to/scenario_sample_file> [route id]
+python scenario_runner.py --route <path/to/route-file> <path/to/scenario_sample_file> [route id] --agent <path/to/agent_file>
 ```
 Example:
 ```
-python scenario_runner.py /scenario_runner/srunner/challenge/routes_debug.xml /scenario_runner/srunner/challenge/all_towns_traffic_scenarios1_3_4.json 0
+python scenario_runner.py /scenario_runner/srunner/routes_debug.xml /scenario_runner/srunner/data/all_towns_traffic_scenarios1_3_4.json 0 --agent srunner/autoagents/npc_agent.py
 ```
+
 If no route id is provided, all routes within the given file will be executed.
 
-For route-based scenarios, it is also possible to use an autonomous agent to control the ego vehicle.
-Several examples are provided in srunner/challenge/autoagents/. To make use of such an agent, run:
-```
-python scenario_runner.py /scenario_runner/srunner/challenge/routes_debug.xml /scenario_runner/srunner/challenge/all_towns_traffic_scenarios1_3_4.json 0 --agent /scenario_runner/srunner/challenge/autoagents/human_agent.py
-```
-For more information about agents, please have a look into the [agent documentation](agent_evaluation.md)
+
+By doing so, ScenarioRunner will match the scenarios to the route, and they'll activate when the ego vehicle is nearby. However, routes need an autonomous agent to control the ego vehicle. Several examples are provided in srunner/autoagents/. For more information about agents, please have a look into the [agent documentation](agent_evaluation.md)
 

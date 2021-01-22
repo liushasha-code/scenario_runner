@@ -24,6 +24,7 @@ class GameTime(object):
     """
 
     _current_game_time = 0.0  # Elapsed game time after starting this Timer
+    _carla_time = 0.0
     _last_frame = 0
     _platform_timestamp = 0
     _init = False
@@ -40,6 +41,7 @@ class GameTime(object):
             GameTime._last_frame = timestamp.frame
             GameTime._platform_timestamp = datetime.datetime.now()
             GameTime._init = True
+            GameTime._carla_time = timestamp.elapsed_seconds
 
     @staticmethod
     def restart():
@@ -47,6 +49,8 @@ class GameTime(object):
         Reset game timer to 0
         """
         GameTime._current_game_time = 0.0
+        GameTime._carla_time = 0.0
+        GameTime._last_frame = 0
         GameTime._init = False
 
     @staticmethod
@@ -57,11 +61,25 @@ class GameTime(object):
         return GameTime._current_game_time
 
     @staticmethod
+    def get_carla_time():
+        """
+        Returns elapsed game time
+        """
+        return GameTime._carla_time
+
+    @staticmethod
     def get_wallclocktime():
         """
         Returns elapsed game time
         """
         return GameTime._platform_timestamp
+
+    @staticmethod
+    def get_frame():
+        """
+        Returns elapsed game time
+        """
+        return GameTime._last_frame
 
 
 class SimulationTimeCondition(py_trees.behaviour.Behaviour):

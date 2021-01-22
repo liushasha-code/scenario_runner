@@ -6,7 +6,7 @@ If you would like to use evaluation criteria for a scenario to evaluate pass/fai
 as StopTriggers (see below). However, not all features for these elements are yet available. If in doubt, please see the
 module documentation in srunner/tools/openscenario_parser.py
 
-An example for a supported scenario based on OpenSCENARIO is available [here](../srunner/examples/FollowLeadingVehicle.xosc)
+An example for a supported scenario based on OpenSCENARIO is available [here](https://github.com/carla-simulator/scenario_runner/blob/master/srunner/examples/FollowLeadingVehicle.xosc)
 
 In addition, it is recommended to take a look into the official documentation available [here](https://releases.asam.net/OpenSCENARIO/1.0.0/Model-Documentation/index.html) and [here](https://releases.asam.net/OpenSCENARIO/1.0.0/ASAM_OpenSCENARIO_BS-1-2_User-Guide_V1-0-0.html#_foreword).
 
@@ -26,27 +26,30 @@ In the following the OpenSCENARIO attributes are listed with their current suppo
 
 This covers all part that are defined outside the OpenSCENARIO Storyboard
 
-|Attribute  | Support Status | Notes / Remarks |
-|-----------|:-------------------------:|-----------------|
-|FileHeader | Yes | Use "CARLA:" at the beginning of the description to use the CARLA coordinate system |
-|ParameterDeclarations | Yes | Parameters can currently only be defined at the beginning (i.e. globally) |
-|CatalogLocations - VehicleCatalog    | Yes | |
-|CatalogLocations - PedestrianCatalog | Yes | |
-|CatalogLocations - MiscObjectCatalog | Yes | |
-|CatalogLocations - EnvironmentCatalog| Yes | |
-|CatalogLocations - ManeuverCatalog   | Yes | |
-|CatalogLocations - ControllerCatalog | Yes | While the catalog is supported, the reference / usage may not work |
-|CatalogLocations - TrajectoryCatalog | Yes | While the catalog is supported, the reference / usage may not work |
-|CatalogLocations - RouteCatalog      | Yes | While the catalog is supported, the reference / usage may not work |
-|RoadNetwork - LogicFile      | Yes | The CARLA level can be used directly (e.g. LogicFile=Town01). Also any OpenDRIVE path can be provided. |
-|RoadNetwork - SceneGraphFile | No  | The provided information is not used |
-|RoadNetwork - TrafficSignals | No  | The provided information is not used |
-|Entities - EntitySelection   | No  | The provided information is not used |
-|Entities - ScenarioObject - ObjectController | No  | The provided information is not used |
-|Entities - ScenarioObject - CatalogReference | Yes | |
-|Entities - ScenarioObject - Vehicle          | Yes | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. The color can be set via properties ('Property name="color" value="0,0,255"'). Axles, Performance, BoundingBox entries are ignored. |
-|Entities - ScenarioObject - Pedestrian       | Yes | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. BoundingBox entries are ignored. |
-|Entities - ScenarioObject - MiscObject       | Yes | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. BoundingBox entries are ignored. |
+| Attribute                          | Support                            | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `FileHeader`                       | &#9989;                              | Use "CARLA:" at the beginning of the description to use the CARLA coordinate system.                                |
+| `CatalogLocations`<br>`ControllerCatalog`                                      | &#9989;                              | While the catalog is supported, the reference/usage may not work.                |
+| `CatalogLocations`<br>`EnvironmentCatalog`                                     | &#9989;                              |                                    |
+| `CatalogLocations`<br>`ManeuverCatalog`                                        | &#9989;                              |                                    |
+| `CatalogLocations`<br>`MiscObjectCatalog`                                      | &#9989;                              |                                    |
+| `CatalogLocations`<br>`PedestrianCatalog`                                      | &#9989;                              |                                    |
+| `CatalogLocations`<br>`RouteCatalog`                                           | &#9989;                              | While the catalog is supported, the reference/usage may not work.                |
+| `CatalogLocations`<br>`TrajectoryCatalog`                                      | &#9989;                              | While the catalog is supported, the reference/usage may not work.                |
+| `CatalogLocations`<br>`VehicleCatalog`                                         | &#9989;                              |                                    |
+| `ParameterDeclarations`            | &#9989;                              |                                    |
+| `RoadNetwork`<br>`LogicFile`                                                   | &#9989;                              | The CARLA level can be used directly (e.g. LogicFile=Town01). Also any OpenDRIVE path can be provided.              |
+| `RoadNetwork`<br>`SceneGraphFile`                                              | &#10060;                               | The provided information is not used.                                            |
+| `RoadNetwork`<br>`TafficSignals`                                               | &#10060;                               | The provided information is not used.                                            |
+| `Entities`<br>`EntitySelection`                                                | &#10060;                               | The provided information is not used.                                            |
+| `Entities` `ScenarioObject`<br>`CatalogReference`                               | &#9989;                              | The provided information is not used.                                            |
+| `Entities` `ScenarioObject`<br>`MiscObject`                                     | &#9989;                              | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. BoundingBox entries are ignored.                   |
+| `Entities` `ScenarioObject`<br>`ObjectController`                               | &#10060;                               | The provided information is not used.                                            |
+| `Entities` `ScenarioObject`<br>`Pedestrian`                                     | &#9989;                              | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. BoundingBox entries are ignored.                   |
+| `Entities` `ScenarioObject`<br>`Vehicle`                                        | &#9989;                              | The name should match a CARLA vehicle model, otherwise a default vehicle based on the vehicleCategory is used. The color can be set via properties ('Property name="color" value="0,0,255"'). Axles, Performance, BoundingBox entries are ignored. |
+
+<br>
+
 
 #### OpenSCENARIO Storyboard
 
@@ -60,38 +63,53 @@ contains of submodules, which are not listed, the support status applies to all 
 
 ###### GlobalAction
 
-|Action  | Support within Init | Support within Story | Notes / Remarks |
-|--------|:-------------------:|:--------------------:|-----------------|
-|EnvironmentAction  | Yes | No | |
-|EntityAction       | No  | No | |
-|ParameterAction    | No  | No | |
-|InfrastructureAction - TrafficSignalAction - TrafficSignalControllerAction  | No | No | |
-|InfrastructureAction - TrafficSignalAction - TrafficSignalStateAction  | No | Yes | Setting a traffic light state in CARLA works by providing the position of the relevant traffic light (Example: TrafficSignalStateAction name="pos=x,y" state="green") |
-|TrafficAction  | No | No | |
+
+
+| GlobalAction                          | Init  support                            | Story support                              | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `EntityAction`                | &#10060;                          | &#10060;                          |                               |
+| `EnvironmentAction`           | &#9989;                         | &#10060;                          |                               |
+| `ParameterAction`             | &#10060;                          | &#10060;                          |                               |
+| `InfrastructureAction` `TrafficSignalAction`<br>`TrafficAction`                                               | &#10060;                          | &#10060;                          |                               |
+| `InfrastructureAction` `TrafficSignalAction`<br>`TrafficSignalControllerAction`                               | &#10060;                          | &#10060;                          |                               |
+| `InfrastructureAction` `TrafficSignalAction`<br>`TrafficSignalStateAction`                                    | &#10060;                          | &#9989;                         | As traffic signals in CARLA towns have no unique ID, they have to be set by providing their position (Example: TrafficSignalStateAction name="pos=x,y" state="green"). The id can also be used for none CARLA town (Example: TrafficSignalStateAction name="id=n" state="green") |
+
+<br>
+
+
 
 ###### UserDefinedAction
 
-|Action  | Support within Init | Support within Story | Notes / Remarks |
-|--------|:-------------------:|:--------------------:|-----------------|
-|CustomCommandAction  | No | Yes* | This action is currently used to trigger the execution of an additional script. Example: type="python /path/to/script args" |
+
+
+| UserDefinedAction                          | Init  support                            | Story support                              | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `CustomCommandAction`                       | &#10060;                                        | &#9989;                                       | This action is currently used to trigger the execution of an additional script. Example: type="python /path/to/script args". |
+
+<br>
+
 
 ###### PrivateAction
 
-|Action  | Support within Init | Support within Story | Notes / Remarks |
-|--------|:-------------------:|:--------------------:|-----------------|
-|LongitudinalAction - SpeedAction                | Yes | Yes | |
-|LongitudinalAction - LongitudinalDistanceAction | No  | Yes | |
-|LateralAction - LaneChangeAction      | No | Yes* | Currently only lane change by one lane to the left or right is supported (RelativeTargetLane) |
-|LateralAction - LaneOffsetAction      | No | No | |
-|LateralAction - LateralDistanceAction | No | No | |
-|VisibilityAction         | No  | No | |
-|SynchronizeAction        | No  | No | |
-|ActivateControllerAction | No  | Yes* | Only supports the autopilot at the moment |
-|ControllerAction         | No  | No  | |
-|TeleportAction           | Yes | Yes | |
-|RoutingAction - AssignRouteAction      | No | Yes | |
-|RoutingAction - FollowTrajectoryAction | No | No  | |
-|RoutingAction - AcquirePositionAction  | No | No  | |
+
+| PrivateAction                          | Init  support                            | Story support                              | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `ActivateControllerAction`                          | &#10060;             | &#9989;            | Can be used to activate/deactive the CARLA autopilot.                                             |
+| `ControllerAction`                                  | &#9989;            | &#9989;            | AssignControllerAction is supported, but a Python module has to be provided for the controller implementation, and in OverrideControllerValueAction all values need to be `False`. |
+| `LateralAction`<br> `LaneChangeAction`             | &#10060;             | &#9989;            | Currently all lane changes have a linear dynamicShape, the dynamicDimension is defined as the distance and are relative to the actor itself (RelativeTargetLane).                  |
+| `LateralAction`<br>`LaneOffsetAction`             | &#9989;             | &#10060;             |  Currently all type of dynamicShapes are ignored and depend on the controller. This action might not work as intended if the offset is high enough to make the vehicle exit its lane  |
+| `LateralAction`<br> `LateralDistanceAction`        | &#10060;             | &#10060;             |                  |
+| `LongitudinalAction`<br> `LongitudinalDistanceAction`                                            | &#10060;             | &#10060;             |                  |
+| `LongitudinalAction`<br> `SpeedAction`             | &#9989;            | &#9989;            |                  |
+| `SynchronizeAction`                                 | &#10060;             | &#10060;             |                  |
+| `TeleportAction`                                    | &#9989;            | &#9989;            |                  |
+| `VisibilityAction`                                  | &#10060;             | &#10060;             |                  |
+| `RoutingAction`<br> `AcquirePositionAction`        | &#10060;             | &#9989;            |                  |
+| `RoutingAction`<br> `AssignRouteAction`            | &#10060;             | &#9989;            | Route Options (shortest/fastest/etc) are supported. Shortests means direct path between A and B, all other will use the shortest path along the road network between A and B       |
+| `RoutingAction`<br> `FollowTrajectoryAction`       | &#10060;             | &#10060;             |                  |
+
+<br>
+
 
 
 ##### OpenSCENARIO Conditions
@@ -102,33 +120,39 @@ The following two tables list the support status for each.
 
 ###### ByEntityCondition
 
-|Condition  | Support Status | Notes / Remarks |
-|-----------|:--------------:|-----------------|
-|EndOfRoadCondition       | No  | |
-|CollisionCondition       | Yes | |
-|OffroadCondition         | No  | |
-|TimeHeadwayCondition     | No  | |
-|TimeToCollisionCondition | Yes | |
-|AccelerationCondition    | No  | |
-|StandStillCondition      | Yes | |
-|SpeedCondition           | Yes | |
-|RelativeSpeedCondition   | No  | |
-|TraveledDistanceCondition| Yes | |
-|ReachPositionCondition   | Yes | |
-|DistanceCondition        | Yes | |
-|RelativeDistanceCondition| Yes | |
+
+| EntityCondition                                | Support                                        | Notes                                          |
+| ---------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| `AccelerationCondition`                        | &#9989;                                          |                                                |
+| `CollisionCondition`                           | &#9989;                                          |                                                |
+| `DistanceCondition`                            | &#9989;                                          | \*freespace\* attribute is still not supported |
+| `EndOfRoadCondition`                           | &#9989;                                          |                                                |
+| `OffroadCondition`                             | &#9989;                                          |                                                |
+| `ReachPositionCondition`                       | &#9989;                                          |                                                |
+| `RelativeDistanceCondition`                    | &#9989;                                          | \*freespace\* attribute is still not supported |
+| `RelativeSpeedCondition`                       | &#9989;                                          |                                                |
+| `SpeedCondition`                               | &#9989;                                          |                                                |
+| `StandStillCondition`                          | &#9989;                                          |                                                |
+| `TimeHeadwayCondition`                         | &#9989;                                          |                                                |
+| `TimeToCollisionCondition`                     | &#9989;                                          |                                                |
+| `TraveledDistanceCondition`                    | &#9989;                                          |                                                |
+
+<br>
 
 ###### ByValueCondition
 
-|Condition  | Support Status | Notes / Remarks |
-|-----------|:--------------:|-----------------|
-|ParameterCondition               | Yes*| The level of support depends on the parameter. It is recommended to use other conditions if possible. Please also consider the note below. |
-|TimeOfDayCondition               | No  | |
-|SimulationTimeCondition          | Yes | |
-|StoryboardElementStateCondition  | Yes*| startTransition, stopTransition, endTransition and completeState are currently supported|
-|UserDefinedValueCondition        | No  | |
-|TrafficSignalCondition           | No  | |
-|TrafficSignalControllerCondition | No  | |
+
+| ValueCondition            | Support                   | Notes                     |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| `ParameterCondition`         | &#9989;                     | The level of support depends on the parameter. It is recommended to use other conditions if possible. Please also consider the note below.                                                  |
+| `SimulationTimeCondition`                                    | &#9989;                     |                           |
+| `StoryboardElementStateCondition`                            | &#9989;                     | startTransition, stopTransition, endTransition and completeState are currently supported.                  |
+| `TimeOfDayCondition`         | &#9989;                     |                           |
+| `TrafficSignalCondition`                                     | &#9989;                     | As traffic signals in CARLA towns have no unique ID, they have to be set by providing their position (Example: TrafficSignalCondition name="pos=x,y" state="green"). The id can also be used for none CARLA town (Example: TrafficSignalCondition name="id=n" state="green") |
+| `TrafficSignalControllerCondition`                           | &#10060;                      |                           |
+| `UserDefinedValueCondition`                                  | &#10060;                      |                           |
+
+<br>
 
 !!! Note
      In the OpenSCENARIO 1.0 standard, a definition of test / evaluation criteria is not
@@ -144,18 +168,21 @@ The following two tables list the support status for each.
      * criteria_CollisionTest
      * criteria_DrivenDistanceTest
 
+
 ##### OpenSCENARIO Positions
 
 There are several ways of defining positions in OpenSCENARIO. In the following we list the
 current support status for each definition format.
 
-|Position  | Support Status | Notes / Remarks |
-|----------|:--------------:|-----------------|
-|WorldPosition          | Yes | |
-|RelativeWorldPosition  | Yes | |
-|RelativeObjectPosition | Yes | |
-|RoadPosition           | No  | |
-|RelativeRoadPosition   | No  | |
-|LanePosition           | Yes | |
-|RelativeLanePosition   | Yes | |
-|RoutePosition          | No  | |
+| Position                          | Support                            | Notes                              |
+| ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `LanePosition`           | &#9989;                    |                          |
+| `RelativeLanePosition`   | &#9989;                    |                          |
+| `RelativeObjectPosition` | &#9989;                    |                          |
+| `RelativeRoadPosition`   | &#10060;                     |                          |
+| `RelativeWorldPosition`  | &#9989;                    |                          |
+| `RoadPosition`           | &#10060;                     |                          |
+| `RoutePosition`          | &#10060;                     |                          |
+| `WorldPosition`          | &#9989;                    |                          |
+
+<br>

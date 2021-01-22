@@ -9,14 +9,18 @@
 Basic scenario class using the OpenSCENARIO definition
 """
 
+from __future__ import print_function
+
 import itertools
+import os
 import py_trees
 
-from srunner.scenariomanager.scenarioatomics.atomic_behaviors import SetOSCInitSpeed
+from srunner.scenariomanager.scenarioatomics.atomic_behaviors import ChangeWeather, ChangeRoadFriction
+from srunner.scenariomanager.scenarioatomics.atomic_behaviors import ChangeActorControl, ChangeActorTargetSpeed
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenarios.basic_scenario import BasicScenario
-from srunner.tools.openscenario_parser import OpenScenarioParser
-from srunner.tools.py_trees_port import Decorator, oneshot_behavior
+from srunner.tools.openscenario_parser import OpenScenarioParser, oneshot_with_check
+from srunner.tools.py_trees_port import Decorator
 
 
 def repeatable_behavior(behaviour, name=None):
@@ -175,7 +179,6 @@ class OpenScenario(BasicScenario):
         Setup all relevant parameters and create scenario
         """
         self.config = config
-        self.target = None
         self.route = None
         self.config_file = config_file
         # Timeout of scenario in seconds
@@ -185,22 +188,59 @@ class OpenScenario(BasicScenario):
                                            world=world, debug_mode=debug_mode,
                                            terminate_on_failure=False, criteria_enable=criteria_enable)
 
+    def _initialize_environment(self, world):
+        """
+        Initialization of weather and road friction.
+        """
+        pass
+
+    def _create_environment_behavior(self):
+        # Set the appropriate weather conditions
+
+        env_behavior = py_trees.composites.Parallel(
+            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="EnvironmentBehavior")
+
+        weather_update = ChangeWeather(
+            OpenScenarioParser.get_weather_from_env_action(self.config.init, self.config.catalogs))
+        road_friction = ChangeRoadFriction(
+            OpenScenarioParser.get_friction_from_env_action(self.config.init, self.config.catalogs))
+        env_behavior.add_child(oneshot_with_check(variable_name="InitialWeather", behaviour=weather_update))
+        env_behavior.add_child(oneshot_with_check(variable_name="InitRoadFriction", behaviour=road_friction))
+
+        return env_behavior
+
     def _create_init_behavior(self):
 
-        init_behavior = None
+        init_behavior = py_trees.composites.Parallel(
+            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="InitBehaviour")
 
-        # set initial speed
-        for actor in self.config.other_actors:
-            if actor.speed > 0:
-                rolename = actor.rolename
-                init_speed = actor.speed
+        for actor in self.config.other_actors + self.config.ego_vehicles:
+            for carla_actor in self.other_actors + self.ego_vehicles:
+                if 'role_name' in carla_actor.attributes and carla_actor.attributes['role_name'] == actor.rolename:
+                    actor_init_behavior = py_trees.composites.Sequence(name="InitActor{}".format(actor.rolename))
 
-                for carla_actor in self.other_actors:
-                    if 'role_name' in carla_actor.attributes and carla_actor.attributes['role_name'] == rolename:
-                        init_behavior = py_trees.composites.Parallel(
-                            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="InitBehaviour")
-                        set_init_speed = SetOSCInitSpeed(carla_actor, init_speed)
-                        init_behavior.add_child(set_init_speed)
+                    controller_atomic = None
+
+                    for private in self.config.init.iter("Private"):
+                        if private.attrib.get('entityRef', None) == actor.rolename:
+                            for private_action in private.iter("PrivateAction"):
+                                for controller_action in private_action.iter('ControllerAction'):
+                                    module, args = OpenScenarioParser.get_controller(
+                                        controller_action, self.config.catalogs)
+                                    controller_atomic = ChangeActorControl(
+                                        carla_actor, control_py_module=module, args=args,
+                                        scenario_file_path=os.path.dirname(self.config.filename))
+
+                    if controller_atomic is None:
+                        controller_atomic = ChangeActorControl(carla_actor, control_py_module=None, args={})
+
+                    actor_init_behavior.add_child(controller_atomic)
+
+                    if actor.speed > 0:
+                        actor_init_behavior.add_child(ChangeActorTargetSpeed(carla_actor, actor.speed, init_speed=True))
+
+                    init_behavior.add_child(actor_init_behavior)
+                    break
 
         return init_behavior
 
@@ -212,7 +252,7 @@ class OpenScenario(BasicScenario):
         story_behavior = py_trees.composites.Parallel(
             policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="Story")
 
-        joint_actor_list = self.other_actors + self.ego_vehicles
+        joint_actor_list = self.other_actors + self.ego_vehicles + [None]
 
         for act in self.config.story.iter("Act"):
 
@@ -237,19 +277,21 @@ class OpenScenario(BasicScenario):
                     actor_ids = []
                     for actor in sequence.iter("Actors"):
                         for entity in actor.iter("EntityRef"):
+                            entity_name = entity.attrib.get('entityRef', None)
                             for k, _ in enumerate(joint_actor_list):
-                                if entity.attrib.get('entityRef', None) == joint_actor_list[k].attributes['role_name']:
+                                if joint_actor_list[k] and entity_name == joint_actor_list[k].attributes['role_name']:
                                     actor_ids.append(k)
                                     break
 
                     if not actor_ids:
-                        raise AttributeError("No actors for maneuvers found")
+                        print("Warning: Maneuvergroup {} does not use reference actors!".format(
+                            sequence.attrib.get('name')))
+                        actor_ids.append(len(joint_actor_list) - 1)
 
                    # Collect catalog reference maneuvers in order to process them at the same time as normal maneuvers
                     catalog_maneuver_list = []
                     for catalog_reference in sequence.iter("CatalogReference"):
-                        catalog_maneuver = self.config.catalogs[catalog_reference.attrib.get(
-                            "catalogName")][catalog_reference.attrib.get("entryName")]
+                        catalog_maneuver = OpenScenarioParser.get_catalog_entry(self.config.catalogs, catalog_reference)
                         catalog_maneuver_list.append(catalog_maneuver)
                     all_maneuvers = itertools.chain(iter(catalog_maneuver_list), sequence.iter("Maneuver"))
                     single_sequence_iteration = py_trees.composites.Parallel(
@@ -267,15 +309,14 @@ class OpenScenario(BasicScenario):
                                 if child.tag == "Action":
                                     for actor_id in actor_ids:
                                         maneuver_behavior = OpenScenarioParser.convert_maneuver_to_atomic(
-                                            child, joint_actor_list[actor_id])
+                                            child, joint_actor_list[actor_id], joint_actor_list, self.config.catalogs)
                                         maneuver_behavior = StoryElementStatusToBlackboard(
                                             maneuver_behavior, "ACTION", child.attrib.get('name'))
-
                                         parallel_actions.add_child(
-                                            oneshot_behavior(variable_name=  # See note in get_xml_path
-                                                             get_xml_path(self.config.story, sequence) + '>' + \
-                                                             get_xml_path(maneuver, child),
-                                                             behaviour=maneuver_behavior))
+                                            oneshot_with_check(variable_name=# See note in get_xml_path
+                                                               get_xml_path(self.config.story, sequence) + '>' + \
+                                                               get_xml_path(maneuver, child),
+                                                               behaviour=maneuver_behavior))
 
                                 if child.tag == "StartTrigger":
                                     # There is always one StartConditions block per Event
@@ -288,15 +329,15 @@ class OpenScenario(BasicScenario):
                                 parallel_actions, "EVENT", event.attrib.get('name'))
                             event_sequence.add_child(parallel_actions)
                             maneuver_parallel.add_child(
-                                oneshot_behavior(variable_name=get_xml_path(self.config.story, sequence) + '>' +
-                                                 get_xml_path(maneuver, event),  # See get_xml_path
-                                                 behaviour=event_sequence))
+                                oneshot_with_check(variable_name=get_xml_path(self.config.story, sequence) + '>' +
+                                                   get_xml_path(maneuver, event),  # See get_xml_path
+                                                   behaviour=event_sequence))
                         maneuver_parallel = StoryElementStatusToBlackboard(
                             maneuver_parallel, "MANEUVER", maneuver.attrib.get('name'))
                         single_sequence_iteration.add_child(
-                            oneshot_behavior(variable_name=get_xml_path(self.config.story, sequence) + '>' +
-                                             get_xml_path(maneuver, maneuver),  # See get_xml_path
-                                             behaviour=maneuver_parallel))
+                            oneshot_with_check(variable_name=get_xml_path(self.config.story, sequence) + '>' +
+                                               maneuver.attrib.get('name'),  # See get_xml_path
+                                               behaviour=maneuver_parallel))
 
                     # OpenSCENARIO refers to Sequences as Scenes in this instance
                     single_sequence_iteration = StoryElementStatusToBlackboard(
@@ -308,8 +349,8 @@ class OpenScenario(BasicScenario):
 
                 if sequence_behavior.children:
                     parallel_sequences.add_child(
-                        oneshot_behavior(variable_name=get_xml_path(self.config.story, sequence),
-                                         behaviour=sequence_behavior))
+                        oneshot_with_check(variable_name=get_xml_path(self.config.story, sequence),
+                                           behaviour=sequence_behavior))
 
             if parallel_sequences.children:
                 parallel_sequences = StoryElementStatusToBlackboard(
@@ -342,10 +383,13 @@ class OpenScenario(BasicScenario):
         behavior = py_trees.composites.Parallel(
             policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="behavior")
 
+        env_behavior = self._create_environment_behavior()
+        if env_behavior is not None:
+            behavior.add_child(oneshot_with_check(variable_name="InitialEnvironmentSettings", behaviour=env_behavior))
+
         init_behavior = self._create_init_behavior()
         if init_behavior is not None:
-            behavior.add_child(oneshot_behavior(variable_name=get_xml_path(
-                self.config.story, self.config.story), behaviour=init_behavior))
+            behavior.add_child(oneshot_with_check(variable_name="InitialActorSettings", behaviour=init_behavior))
 
         behavior.add_child(story_behavior)
 
@@ -377,7 +421,7 @@ class OpenScenario(BasicScenario):
                         get_xml_path(maneuver, condition)  # See note in get_xml_path
                 else:
                     xml_path = get_xml_path(self.config.story, condition)
-                criterion = oneshot_behavior(variable_name=xml_path, behaviour=criterion)
+                criterion = oneshot_with_check(variable_name=xml_path, behaviour=criterion)
                 condition_group_sequence.add_child(criterion)
 
             if condition_group_sequence.children:

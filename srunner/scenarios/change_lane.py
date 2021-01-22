@@ -21,7 +21,7 @@ import random
 import py_trees
 import carla
 
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider, CarlaActorPool
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (ActorTransformSetter,
                                                                       StopVehicle,
                                                                       LaneChange,
@@ -86,7 +86,7 @@ class ChangeLane(BasicScenario):
 
         # add actors from xml file
         for actor in config.other_actors:
-            vehicle = CarlaActorPool.request_new_actor(actor.model, actor.transform)
+            vehicle = CarlaDataProvider.request_new_actor(actor.model, actor.transform)
             self.other_actors.append(vehicle)
             vehicle.set_simulate_physics(enabled=False)
 
@@ -150,7 +150,7 @@ class ChangeLane(BasicScenario):
                                                         self.ego_vehicles[0],
                                                         distance=20,
                                                         name="FinalDistance")
-        endcondition_part2 = StandStill(self.ego_vehicles[0], name="FinalSpeed")
+        endcondition_part2 = StandStill(self.ego_vehicles[0], name="FinalSpeed", duration=1)
         endcondition.add_child(endcondition_part1)
         endcondition.add_child(endcondition_part2)
 
