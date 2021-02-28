@@ -49,7 +49,12 @@ Use ARROWS or WASD keys for control.
 from __future__ import print_function
 
 carla_version = '0.9.10.1'
-root_path = '/home/lyq/CARLA_simulator'
+
+# on dell PC
+# root_path = '/home/lyq/CARLA_simulator'
+
+# on 1660ti laptop
+root_path = '/home/liuyuqi/CARLA_simulator'
 
 # ==================================================
 # import carla module
