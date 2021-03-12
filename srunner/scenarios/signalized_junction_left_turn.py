@@ -46,7 +46,7 @@ class SignalizedJunctionLeftTurn(BasicScenario):
         """
         self._world = world
         self._map = CarlaDataProvider.get_map()
-        self._target_vel = 6.9
+        self._target_vel = 5  # 6.9
         self._brake_value = 0.5
         self._ego_distance = 110
         self._traffic_light = None
@@ -110,12 +110,12 @@ class SignalizedJunctionLeftTurn(BasicScenario):
         # adding flow of actors
         actor_source = ActorSource(
             ['vehicle.tesla.model3', 'vehicle.audi.tt'],
-            self._other_actor_transform, 15, self._blackboard_queue_name)
+            self._other_actor_transform, 15, self._blackboard_queue_name)  # original gap distance 15
         # destroying flow of actors
         actor_sink = ActorSink(plan[-1][0].transform.location, 10)
         # follow waypoints untill next intersection
         move_actor = WaypointFollower(self.other_actors[0], self._target_vel, plan=plan,
-                                      blackboard_queue_name=self._blackboard_queue_name, avoid_collision=True)
+                                      blackboard_queue_name=self._blackboard_queue_name, avoid_collision=False)
         # wait
         wait = DriveDistance(self.ego_vehicles[0], self._ego_distance)
 

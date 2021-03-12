@@ -50,11 +50,15 @@ from __future__ import print_function
 
 carla_version = '0.9.10.1'
 
+
 # on dell PC
 # root_path = '/home/lyq/CARLA_simulator'
 
 # on 1660ti laptop
-root_path = '/home/liuyuqi/CARLA_simulator'
+# root_path = '/home/liuyuqi/CARLA_simulator'
+
+# on 2080ti server
+root_path = '/home1/lyq/CARLA_simulator'
 
 # ==================================================
 # import carla module

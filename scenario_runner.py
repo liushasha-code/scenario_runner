@@ -20,8 +20,11 @@ carla_version = '0.9.10.1'
 # on dell PC
 # root_path = '/home/lyq/CARLA_simulator'
 
+# on 2080ti server
+root_path = '/home1/lyq/CARLA_simulator'
+
 # on 1660ti laptop
-root_path = '/home/liuyuqi/CARLA_simulator'
+# root_path = '/home/liuyuqi/CARLA_simulator'
 
 # ==================================================
 # import carla module
@@ -118,11 +121,14 @@ class ScenarioRunner(object):
         self.client = carla.Client(args.host, int(args.port))
         self.client.set_timeout(self.client_timeout)
 
+        # debug the traffic manager port number
+        # print('tf port: ',  int(self._args.trafficManagerPort))
+
         self.traffic_manager = self.client.get_trafficmanager(int(self._args.trafficManagerPort))
 
-        dist = pkg_resources.get_distribution("carla")
-        if LooseVersion(dist.version) < LooseVersion('0.9.10'):
-            raise ImportError("CARLA version 0.9.10 or newer required. CARLA version found: {}".format(dist))
+        # dist = pkg_resources.get_distribution("carla")
+        # if LooseVersion(dist.version) < LooseVersion('0.9.10'):
+        #     raise ImportError("CARLA version 0.9.10 or newer required. CARLA version found: {}".format(dist))
 
         # Load agent if requested via command line args
         # If something goes wrong an exception will be thrown by importlib (ok here)
@@ -546,7 +552,7 @@ def main():
                         help='IP of the host server (default: localhost)')
     parser.add_argument('--port', default='2000',
                         help='TCP port to listen to (default: 2000)')
-    parser.add_argument('--timeout', default="10.0",
+    parser.add_argument('--timeout', default="100.0",
                         help='Set the CARLA client timeout value in seconds')
     parser.add_argument('--trafficManagerPort', default='8000',
                         help='Port to use for the TrafficManager (default: 8000)')
